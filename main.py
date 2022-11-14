@@ -9,9 +9,11 @@ import visualization.viz as viz
 from simulation.simulator import Simulator
 from simulation.objects.enums import Callbacks as SIM_Callbacks
 from simulation.objects.enums import SimulationModes as SIM_Modes
-from simulation.objects.enums import FairnessModes
+from simulation.objects.enums import TimestampModes
 from optimization.model import Model
 import networkx as nx
+import time
+import utils.fairness as Fairness
 
 def argsParse():    
 	parser = argparse.ArgumentParser()
@@ -25,84 +27,75 @@ def argsParse():
  
  
  
- 
- 
- 
-def SimulatorFairness_Callback(activeTraces, completedTraces, R, fairnessMode, windows, currentWindow):
-    if fairnessMode == FairnessModes.WINDOW:
-        resMat_N    = {r:1.0/len(R) for r in R}
-        resMat_TIME = {r:1.0/len(R) for r in R}
-        
-    elif fairnessMode == FairnessModes.BACKLOG:
-        BACKLOG_N   = 2
-        resMat_N    = {r:0 for r in R}
-        resMat_TIME = {r:0 for r in R}
-        
-        nTotal    = 0
-        timeTotal = 0
-                
-        minTS = windows[max([0, currentWindow - BACKLOG_N])][0]
-        maxTS = windows[currentWindow][1]
-                
-        for trace in completedTraces:
-            for data in trace.history:
-                if minTS <= data[0] or data[1] <= maxTS:                    
-                    resMat_N[data[2]]   += 1
-                    nTotal              += 1
-                    
-                    start = data[0]
-                    if data[0] < minTS:
-                        start = minTS
-                    end = data[1]
-                    if maxTS < data[1]:
-                        end = maxTS
-                    
-                    resMat_TIME[data[2]] += end-start
-                    timeTotal += end-start
-                
-        for r in R:
-            resMat_N[r] = resMat_N[r] / nTotal
-            resMat_TIME[r] = resMat_TIME[r] / timeTotal
-        
-    print("Fairness callback")
-    pass
+def SimulatorFairness_Callback(activeTraces, completedTraces, R, windows, currentWindow):
+    # return Fairness.FairnessEqualWork(R)
+    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentWindow, BACKLOG_N=5)
+    
 
 def SimulatorCongestion_Callback(trace, segment):
     pass
 
-@profile
-def SimulatorWindowStart_Callback(activeTraces, P_AtoR, availableResources, time):
+#@profile
+def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResources, simTime, windowDuration, fRatio):
     print("MIP callback")
-    # # Build MIP
-    # model = Model()
     
-    # # Solve MIP
-    # model.solve()
+    # These are activity-resource schedulings, where only one resource is able to perform the activity => Hence, no need to add graph nodes
+    singleResponsibilitySchedule = {}
     
-    # model.GetResult()
-    
+    t = time.time()
     G = nx.DiGraph()
+    
+    skipNoTraces = True
+    skipNoResources = True
+    
     for trace in activeTraces:
         if trace.IsWaiting():
+            skipNoTraces = False
+            
             nextActivity = trace.GetNextActivity(SIM_Modes.KNOWN_FUTURE)
+            nextActivityDuration = trace.GetNextActivityTime(SIM_Modes.KNOWN_FUTURE, TimestampModes.END)
             
-            G.add_edge('s', 'c' + trace.case, capacity=1)
+            # Either the activity takes more than one window or a duration could not be determined
+            if nextActivityDuration > windowDuration or  nextActivityDuration == 0:
+                nextActivityDuration = windowDuration
+                
+                
+            G.add_edge('s', 'c' + trace.case, capacity = windowDuration)
             
-            for r in P_AtoR[nextActivity]:
-                G.add_edge('c' + trace.case, r, weight=-1,capacity=1)
+            # If there is only one resource able to perform the activity, we do not need to integrate it into the flow-graph as there is no other assignment choice
+            ableResources = list(P_AtoR[nextActivity])            
+            if len(ableResources) == 1:
+                singleResponsibilitySchedule[trace.case] = {'StartTime': simTime, 'Resource': ableResources[0] } 
+            else:
+                for r in ableResources:
+                    if fRatio[r] > 0:
+                        # Multiply the weights by a large constant factor => Doc says floating points can cause issues: https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.flow.max_flow_min_cost.html#networkx.algorithms.flow.max_flow_min_cost
+                        G.add_edge('c' + trace.case, r, weight = -(1000 * fRatio[r]), capacity = nextActivityDuration)
             
     for r in availableResources:
-        G.add_edge(r, 't', capacity=1)
+        skipNoResources = False
+        G.add_edge(r, 't', capacity = windowDuration)
     
-    if len(G.nodes()) != 0:
+    #print(f"    -> Construction: {time.time() - t}s")
+    #print(G.edges.data())
+    print(f"    -> Nodes: {len(G.nodes())}")
+    if len(G.nodes()) != 0 and not skipNoTraces and not skipNoResources:
+        t = time.time()
         M = nx.max_flow_min_cost(G, 's', 't')
+        #print(M)
+        #print(f"    -> Solve: {time.time() - t}s")
+        
+        t = time.time()
         del M['s']
         del M['t']
         for r in availableResources:
             del M[r]
         
         f = lambda x: [res for res, val in x.items() if val > 0]
-        return {case[1:]: {'StartTime': time, 'Resource': f(res)[0]} for case, res in M.items() if len(f(res)) == 1}
+        ret =  {case[1:]: {'StartTime': simTime, 'Resource': f(res)[0]} for case, res in M.items() if len(f(res)) > 0}
+        
+        #print(f"    -> Post: {time.time() - t}s")
+        return {**ret, **singleResponsibilitySchedule}
    
    
     # Temporary simple schedule to test the simulator
@@ -116,8 +109,8 @@ def main():
     log = pm4py.read_xes(args.log)
     
     no_events = sum([len(trace) for trace in log])
-    windowNumber = 1 * math.ceil(math.sqrt(no_events))
-    
+    windowNumber = 100 * math.ceil(math.sqrt(no_events))
+    print(f"Number of windows: {windowNumber}")
     
     # Convert XES-Events into dict {'act', 'ts', 'res', 'single', 'cid'}
     event_dict = extractor.event_dict(log, res_info=True)
@@ -141,12 +134,12 @@ def main():
     
     
     # Simulation -> Callback at the beginning / end of each window
-    sim = Simulator(event_dict, eventsPerWindowDict, AtoR, RtoA, bucketId_borders_dict, simulationMode=SIM_Modes.KNOWN_FUTURE, endTimestampAttribute='ts', verbose=True)
-    sim.register(SIM_Callbacks.WND_START, SimulatorWindowStart_Callback)
-    sim.register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
+    sim = Simulator(event_dict, eventsPerWindowDict, AtoR, RtoA, bucketId_borders_dict, simulationMode=SIM_Modes.KNOWN_FUTURE, endTimestampAttribute='ts', verbose=False)
+    sim.Register(SIM_Callbacks.WND_START_SCHEDULING, SimulatorWindowStartScheduling_Callback)
+    sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     # sim.register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
-    sim.run()
-    
+    sim.Run()
+    sim.ExportSimulationLog('logs/simulated_fairness_log_BACKLOG_5.xes')
 
 if __name__ == '__main__':
     main()
