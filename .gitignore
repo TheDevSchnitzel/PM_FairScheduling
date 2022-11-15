@@ -1,5 +1,6 @@
 # Custom stuff
 logs/
+*.xlsx
 
 
 # Byte-compiled / optimized / DLL files

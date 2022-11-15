@@ -165,8 +165,10 @@ class Simulator:
                     self.__vPrint(f"    -> Fairness-Callback took: {time.time() - fTimeStart}s")
                 
                 # Calculate congestion ratio - { per segment? }
-                #if self.callbacks[Callbacks.CALC_Congestion] is not None:
-                #    cRatio = self.callbacks[Callbacks.CALC_Congestion](trace, segment)
+                if self.callbacks[Callbacks.CALC_Congestion] is not None:
+                    fTimeStart = time.time()
+                    cRatio = self.callbacks[Callbacks.CALC_Congestion](trace, segment)
+                    self.__vPrint(f"    -> Congestion-Callback took: {time.time() - fTimeStart}s")
                 
                 # Start new traces that arrive in this window
                 activeTraces = activeTraces + self.GetNewlyBeginningTraces(currentWindowLower, currentWindowUpper)

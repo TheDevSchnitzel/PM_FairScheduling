@@ -4,6 +4,7 @@ import random
 import itertools
 from datetime import datetime, timezone
 import pandas as pd
+import os
 
 def GetIntTs(datetime_ts):
     # From extractor / Bianka
@@ -57,16 +58,15 @@ def GetActivityResourceMapping(log):
     sumTime = sum([resTime[r] for r in R])
     sumFreq = sum([resFreq[r] for r in R])
     
-    df = pd.DataFrame(data={
+    df1 = pd.DataFrame(data={
         'Resource': R, 
         'Total-Activities': [resFreq[r] for r in R], 
         'Relative-Activities': [resFreq[r] / sumFreq for r in R],
         'Total-Time': [resTime[r] for r in R], 
         'Relative-Time': [resTime[r] / sumTime for r in R],
     })    
-    print(df)
                 
-    df = pd.DataFrame(data={
+    df2 = pd.DataFrame(data={
         'Activity': [a for a in A for _ in range(len(actResTime[a]))], 
         'Resource': [r for a in A for r in sortedAtoR[a]], 
         'Total-Activities': [actResFrequency[a][r] for a in A for r in sortedAtoR[a]], 
@@ -74,22 +74,29 @@ def GetActivityResourceMapping(log):
         'Total-Time': [actResTime[a][r] for a in A for r in sortedAtoR[a]], 
         'Relative-Time': [actResTime[a][r] / sumTime for a in A for r in sortedAtoR[a]],
     })    
-    print(df)    
-                
+    return df1, df2                
                 
     
 def main(original, processed):
     origLog = pm4py.read_xes(original)
-    fairLog = pm4py.read_xes(processed)
 
-    GetActivityResourceMapping(origLog)
-    
-    print('###############################################')
+    with pd.ExcelWriter('workDistribution.xlsx') as writer:
+        df1, df2 = GetActivityResourceMapping(origLog)
+        df1.to_excel(writer, sheet_name='Original_WORK')
+        df2.to_excel(writer, sheet_name='Original_TIME')
+        del origLog
         
-    GetActivityResourceMapping(fairLog)
-    
-    del origLog
-    del fairLog
+        for log in processed:
+            fairLog = pm4py.read_xes(log)
+            df1, df2 = GetActivityResourceMapping(fairLog)  
+            
+            fName = os.path.basename(log)
+            print(fName)
+            df1.to_excel(writer, sheet_name=f'{fName}_WORK')
+            df2.to_excel(writer, sheet_name=f'{fName}_TIME')  
+            del fairLog
 
 if __name__ == '__main__':
-    main('../logs/log_ResReduced.xes', '../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes')
+    main('../logs/log_ResReduced.xes', 
+         ['../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes',
+          '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes'])
