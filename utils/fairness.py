@@ -2,7 +2,7 @@
 def FairnessEqualWork(R):
     return {r: 1.0/len(R) for r in R}
         
-def FairnessBacklogFair_TIME(activeTraces, completedTraces, R, windows, currentWindow, BACKLOG_N = 5):
+def FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N = 5):
         resMat_TIME = {r:0 for r in R}
         
         timeTotal = 0
@@ -24,11 +24,15 @@ def FairnessBacklogFair_TIME(activeTraces, completedTraces, R, windows, currentW
                     timeTotal += end-start
                 
         for r in R:
-            resMat_TIME[r] = resMat_TIME[r] / timeTotal
+            resMat_TIME[r] = 1 - resMat_TIME[r] / timeTotal # n/tot: How much work has the resource done, 1-: how much is still to do
+                
+            # Avoid stalling
+            if resMat_TIME[r] == 0:
+                resMat_TIME[r] = 0.001
 
         return resMat_TIME
         
-def FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentWindow, BACKLOG_N = 5):
+def FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N = 5):
         resMat_N = {r: 0 for r in R}        
         nTotal   = 0
                 
@@ -38,17 +42,21 @@ def FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentW
         for trace in completedTraces + activeTraces:
             for data in trace.history:
                 if minTS <= data[0] or data[1] <= maxTS:
-                    resMat_N[data[2]]   += 1
-                    nTotal              += 1
+                    # Exclude resources that are the only ones able to perform a specific activity from this calculation
+                    if data[2] not in LonelyResources:
+                        resMat_N[data[2]]   += 1
+                        nTotal              += 1
         
         # Equal distribution if no traces processed so far
         if nTotal == 0:
             return {r: 1.0/len(R) for r in R}
         else:    
             for r in R:
-                resMat_N[r] = resMat_N[r] / nTotal
+                resMat_N[r] = 1 - (resMat_N[r] / nTotal) # n/tot: How much work has the resource done, 1-: how much is still to do
+                
+                # Avoid stalling
+                if resMat_N[r] == 0:
+                    resMat_N[r] = 0.001
             
-            if currentWindow > 10000:
-                print(resMat_N)
             return resMat_N
         

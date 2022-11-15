@@ -20,4 +20,4 @@ def GetActiveSegments(activeTraces, simTime):
             
             # Time spent in this segment
             segmentTime[(lastAct, nextAct)] = simTime - trace.currentAct[0]
-        
+    return segmentFreq, segmentTime

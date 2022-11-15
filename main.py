@@ -29,9 +29,10 @@ def argsParse():
  
  
  
-def SimulatorFairness_Callback(activeTraces, completedTraces, R, windows, currentWindow):
+def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow):
+    
     #return Fairness.FairnessEqualWork(R)
-    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentWindow, BACKLOG_N=500)
+    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=500)
     
 
 def SimulatorCongestion_Callback(trace, segment):

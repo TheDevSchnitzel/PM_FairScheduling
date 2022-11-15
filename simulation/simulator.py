@@ -42,10 +42,28 @@ class Simulator:
         
         # Build trace objects from the event data
         self.GenerateTraces()
+        
+        # Get resources that only perform activities that no other resource can perform
+        self.LonelyResources = self.__GetLonelyResources()
 
     def __vPrint(self, msg):
         if self.P_Verbose:
             print(msg)
+            
+    def __GetLonelyResources(self):
+        """Lonely resources are carrying out activities without any other resource taking part in the same activity
+        They have to be treated differently for e.g. fairness calculations"""
+        lonelyResources = []
+        
+        for _, rSet in self.P_AtoR.items():
+            rList = list(rSet)
+            if len(rList) == 1:
+                if rList[0] not in lonelyResources:
+                    lonelyResources.append(rList[0])
+            else:
+                notLonely = [r for r in lonelyResources if r in rList]
+                lonelyResources = list(set(lonelyResources) - set(notLonely))
+        return lonelyResources
 
     def Register(self, callbackType, callback):
         self.callbacks[callbackType] = callback
@@ -143,7 +161,7 @@ class Simulator:
                 fRatio = None
                 if self.callbacks.get(Callbacks.CALC_Fairness) is not None:
                     fTimeStart = time.time()
-                    fRatio = self.callbacks.get(Callbacks.CALC_Fairness)(activeTraces, self.completedTraces, self.R, self.P_Windows, currentWindow)
+                    fRatio = self.callbacks.get(Callbacks.CALC_Fairness)(activeTraces, self.completedTraces, self.LonelyResources, self.R, self.P_Windows, currentWindow)
                     self.__vPrint(f"    -> Fairness-Callback took: {time.time() - fTimeStart}s")
                 
                 # Calculate congestion ratio - { per segment? }
