@@ -14,22 +14,24 @@ from optimization.model import Model
 import networkx as nx
 import time
 import utils.fairness as Fairness
+import json
 
 def argsParse():    
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-l', '--log', default='logs/log.xes', type=str, help="The path to the event-log to be loaded")
- 
-	#parser.add_argument('--precision', default=0.0, type=float)
-	
-	return parser.parse_args()
- 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-l', '--log', default='logs/log.xes', type=str, help="The path to the event-log to be loaded")
+
+    parser.add_argument('--actDurations', default=None, type=str, help="A dictionary of activities and their duration \'{\'A\': 1}\'")
+    #parser.add_argument('--precision', default=0.0, type=float)
+
+    return parser.parse_args()
+
  
  
  
  
 def SimulatorFairness_Callback(activeTraces, completedTraces, R, windows, currentWindow):
-    # return Fairness.FairnessEqualWork(R)
-    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentWindow, BACKLOG_N=5)
+    #return Fairness.FairnessEqualWork(R)
+    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentWindow, BACKLOG_N=500)
     
 
 def SimulatorCongestion_Callback(trace, segment):
@@ -69,8 +71,8 @@ def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResou
             else:
                 for r in ableResources:
                     if fRatio[r] > 0:
-                        # Multiply the weights by a large constant factor => Doc says floating points can cause issues: https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.flow.max_flow_min_cost.html#networkx.algorithms.flow.max_flow_min_cost
-                        G.add_edge('c' + trace.case, r, weight = -(1000 * fRatio[r]), capacity = nextActivityDuration)
+                        # Multiply the weights by a large constant factor and round => Doc says floating points can cause issues: https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.flow.max_flow_min_cost.html#networkx.algorithms.flow.max_flow_min_cost
+                        G.add_edge('c' + trace.case, r, weight = -int(1000 * fRatio[r]), capacity = nextActivityDuration)
             
     for r in availableResources:
         skipNoResources = False
@@ -139,7 +141,7 @@ def main():
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     # sim.register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Run()
-    sim.ExportSimulationLog('logs/simulated_fairness_log_BACKLOG_5.xes')
+    sim.ExportSimulationLog('logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes')
 
 if __name__ == '__main__':
     main()

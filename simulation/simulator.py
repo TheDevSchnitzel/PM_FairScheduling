@@ -128,17 +128,13 @@ class Simulator:
             if currentWindowUpper < simulatedTimestep or currentWindow == -1:
                 currentWindow += 1
                 
-                # if currentWindow == 2:
-                #     print(availableResources)
-                #     print(schedule)
-                #     print([f"{trace.case}: " for trace in activeTraces if trace.IsWaiting()], sep='\n')
-                #     return
                 if currentWindow < len(self.P_Windows):
                     currentWindowLower = self.P_Windows[currentWindow][0]
                     currentWindowUpper = self.P_Windows[currentWindow][1]
                 else:
                     currentWindowLower = simulatedTimestep
                     currentWindowUpper = simulatedTimestep + (self.P_Windows[0][1] - self.P_Windows[0][0])
+                    self.P_Windows[currentWindow] = (currentWindowLower, currentWindowUpper)
                     
                 currentWindowDuration = currentWindowUpper - currentWindowLower
                 self.__vPrint(f' ### New Window {currentWindow} - {datetime.fromtimestamp(currentWindowLower)} <==> {datetime.fromtimestamp(currentWindowUpper)} ###')
@@ -172,25 +168,13 @@ class Simulator:
                     # Get traces without a current schedule (no need to double schedule traces if they have already been scheduled)
                     unscheduledTraces = [x for x in activeTraces if x.case not in schedule]
                     
-                    # if currentWindow == 10:
-                    #     print(schedule)
-                    #     print('###########################################')
-                    #     print([x.case for x in activeTraces])
-                    #     print('###########################################')
-                    #     print([x.case for x in unscheduledTraces])
-                    
                     if len(unscheduledTraces) > 0:
                         # Perform the scheduling callback (Leave it to the Sim-User to provide a way to calculate the schedule)
                         newSchedule = cbScheduling(unscheduledTraces, self.P_AtoR, availableResources, simulatedTimestep, currentWindowUpper-currentWindowLower, fRatio)
                         
                         # Merge schedule dicts (Trace-ID is key, no duplicates ;) )
                         schedule = {**schedule, **newSchedule}
-                    
-                        # if currentWindow == 10:
-                        #     print('###########################################')
-                        #     print(schedule)
-                        #     return
-                    
+                                        
                         self.__vPrint(f"    -> WND_START-Callback took: {time.time() - fTimeStart}s")
 
                 

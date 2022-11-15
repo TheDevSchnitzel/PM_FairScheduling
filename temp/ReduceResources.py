@@ -1,7 +1,7 @@
 import pm4py
 from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 import random
-
+import itertools
 
 
 # Take an eventlog and re-assign/map the resources to different ones
@@ -54,7 +54,7 @@ def ApplyMapping(log):
         if len(res) == 1:
             actResMapDist[act] = res
         else:
-            actResMapDist[act] = [res[i] * (p[i]*100) for i in range(len(res))]
+            actResMapDist[act] = list(itertools.chain.from_iterable([[res[i]] * int(p[i]*100) for i in range(len(res))]))
     
     for trace in log:
         n = len(trace)

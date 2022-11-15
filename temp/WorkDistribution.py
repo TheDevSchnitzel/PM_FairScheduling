@@ -1,0 +1,95 @@
+import pm4py
+from pm4py.objects.log.exporter.xes import exporter as xes_exporter
+import random
+import itertools
+from datetime import datetime, timezone
+import pandas as pd
+
+def GetIntTs(datetime_ts):
+    # From extractor / Bianka
+    if isinstance(datetime_ts, str):
+        datetime_ts = datetime.strptime(datetime_ts, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    return (datetime_ts - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds()
+            
+def GetActivityResourceMapping(log):
+    actResFrequency = {}
+    actResTime = {}
+    resFreq = {}
+    resTime = {}
+    
+    for trace in log:
+        n = len(trace)
+        for i in range(n):
+            event = trace[i]
+            act = event['concept:name']
+            res = event['org:resource']
+            ts  = GetIntTs(event['time:timestamp'])
+                        
+            if res in resFreq:
+                resFreq[res] += 1
+            else: 
+                resFreq[res] = 1
+                resTime[res] = 0
+                            
+            if act in actResFrequency:
+                if res in actResFrequency[act]:
+                    actResFrequency[act][res] += 1
+                else:
+                    actResFrequency[act][res] = 1
+                    actResTime[act][res]      = 0
+            else:
+                actResFrequency[act] = {res: 1}
+                actResTime[act]      = {res: 0}
+                
+            if i > 0:
+                prevTS = GetIntTs(trace[i-1]['time:timestamp'])
+                duration = ts - prevTS
+                actResTime[act][res] += duration
+                resTime[res]         += duration
+    
+    R = list(resFreq.keys())
+    R.sort()
+    A = list(actResFrequency.keys())
+    A.sort()
+    sortedAtoR = {a: sorted(list(set([r for r in actResTime[a].keys()]))) for a in A}
+    
+    
+    sumTime = sum([resTime[r] for r in R])
+    sumFreq = sum([resFreq[r] for r in R])
+    
+    df = pd.DataFrame(data={
+        'Resource': R, 
+        'Total-Activities': [resFreq[r] for r in R], 
+        'Relative-Activities': [resFreq[r] / sumFreq for r in R],
+        'Total-Time': [resTime[r] for r in R], 
+        'Relative-Time': [resTime[r] / sumTime for r in R],
+    })    
+    print(df)
+                
+    df = pd.DataFrame(data={
+        'Activity': [a for a in A for _ in range(len(actResTime[a]))], 
+        'Resource': [r for a in A for r in sortedAtoR[a]], 
+        'Total-Activities': [actResFrequency[a][r] for a in A for r in sortedAtoR[a]], 
+        'Relative-Activities': [actResFrequency[a][r] / sumFreq for a in A for r in sortedAtoR[a]],
+        'Total-Time': [actResTime[a][r] for a in A for r in sortedAtoR[a]], 
+        'Relative-Time': [actResTime[a][r] / sumTime for a in A for r in sortedAtoR[a]],
+    })    
+    print(df)    
+                
+                
+    
+def main(original, processed):
+    origLog = pm4py.read_xes(original)
+    fairLog = pm4py.read_xes(processed)
+
+    GetActivityResourceMapping(origLog)
+    
+    print('###############################################')
+        
+    GetActivityResourceMapping(fairLog)
+    
+    del origLog
+    del fairLog
+
+if __name__ == '__main__':
+    main('../logs/log_ResReduced.xes', '../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes')

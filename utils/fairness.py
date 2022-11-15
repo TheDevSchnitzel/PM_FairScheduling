@@ -41,10 +41,14 @@ def FairnessBacklogFair_WORK(activeTraces, completedTraces, R, windows, currentW
                     resMat_N[data[2]]   += 1
                     nTotal              += 1
         
+        # Equal distribution if no traces processed so far
         if nTotal == 0:
             return {r: 1.0/len(R) for r in R}
         else:    
             for r in R:
                 resMat_N[r] = resMat_N[r] / nTotal
+            
+            if currentWindow > 10000:
+                print(resMat_N)
             return resMat_N
         
