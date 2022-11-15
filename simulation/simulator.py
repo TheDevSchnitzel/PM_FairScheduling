@@ -167,7 +167,7 @@ class Simulator:
                 # Calculate congestion ratio - { per segment? }
                 if self.callbacks[Callbacks.CALC_Congestion] is not None:
                     fTimeStart = time.time()
-                    cRatio = self.callbacks[Callbacks.CALC_Congestion](trace, segment)
+                    cRatio = self.callbacks[Callbacks.CALC_Congestion](activeTraces, self.completedTraces, self.LonelyResources, self.R, self.P_Windows, currentWindow, simulatedTimestep)
                     self.__vPrint(f"    -> Congestion-Callback took: {time.time() - fTimeStart}s")
                 
                 # Start new traces that arrive in this window

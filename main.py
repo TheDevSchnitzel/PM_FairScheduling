@@ -14,6 +14,7 @@ from optimization.model import Model
 import networkx as nx
 import time
 import utils.fairness as Fairness
+import utils.congestion as Congestion
 import json
 
 def argsParse():    
@@ -35,7 +36,11 @@ def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R
     return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=500)
     
 
-def SimulatorCongestion_Callback(trace, segment):
+def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, simTime):
+    print("Congestion:")
+    a, b = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
+    print(a)
+    print(b)
     pass
 
 #@profile
@@ -140,7 +145,7 @@ def main():
     sim = Simulator(event_dict, eventsPerWindowDict, AtoR, RtoA, bucketId_borders_dict, simulationMode=SIM_Modes.KNOWN_FUTURE, endTimestampAttribute='ts', verbose=False)
     sim.Register(SIM_Callbacks.WND_START_SCHEDULING, SimulatorWindowStartScheduling_Callback)
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
-    # sim.register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
+    sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Run()
     sim.ExportSimulationLog('logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes')
 
