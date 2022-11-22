@@ -54,7 +54,7 @@ def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, w
     
     #print(G.edges.data())
     if not skipNoTraces and not skipNoResources:
-        print(f"    -> Nodes: {len(G.nodes())}")
+        #print(f"    -> Nodes: {len(G.nodes())}")
         M = nx.max_flow_min_cost(G, 's', 't')
         #print(M)
         #print(f'Cost: {nx.cost_of_flow(G, M)}')

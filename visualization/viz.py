@@ -1,6 +1,5 @@
 import pandas as pd
 import utils.extractor as extractor
-import utils.component as component
 import utils.frames as frames
 import matplotlib.pyplot as plt
 import datetime

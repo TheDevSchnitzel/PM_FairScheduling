@@ -1,6 +1,5 @@
 import argparse
 import pm4py
-import utils.component as component
 import utils.extractor as extractor
 import utils.frames as frames
 import alex
@@ -55,7 +54,6 @@ def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources,
 def SimulatorWindowStartScheduling_Callback(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
     return Optimization.OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
 
-    
 def main():
     args = argsParse()
     
@@ -71,8 +69,6 @@ def main():
     # Pairs of events directly following each other, events triggering others (preceed them), events releasing others (follow them)
     pairs, triggers, releases = extractor.trig_rel_dicts(log, method='df')
     
-    # All activities, resources and DFG-Segments as sets
-    A_set, R_set, S_set, AtoR, RtoA = component.components(event_dict, pairs, res_info=True)
     
 
     print('Computing frames, partitioning events into frames')
@@ -87,7 +83,7 @@ def main():
     
     
     # Simulation -> Callback at the beginning / end of each window
-    sim = Simulator(event_dict, eventsPerWindowDict, AtoR, RtoA, bucketId_borders_dict, 
+    sim = Simulator(event_dict, eventsPerWindowDict, bucketId_borders_dict, 
                     simulationMode=SIM_Modes.KNOWN_FUTURE,
                     optimizationMode = OptimizationModes.FAIRNESS, 
                     endTimestampAttribute='ts', 
@@ -96,7 +92,7 @@ def main():
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     # sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Run()
-    sim.ExportSimulationLog('logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_200_CONSTANTLY_RESSCHEDULED_NEW_GRAPH.xes')
+    sim.ExportSimulationLog('logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_200_CONSTANTLY_RESSCHEDULED_NEW_GRAPH5.xes')
     #sim.ExportSimulationLog('logs/simulated_congestion_log_WAITING_TRACE_COUNT.xes')
 
 if __name__ == '__main__':

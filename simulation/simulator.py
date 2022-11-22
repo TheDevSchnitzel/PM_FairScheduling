@@ -9,18 +9,17 @@ import pandas as pd
 
 class Simulator:
     
-    def __init__(self, event_dict, eventsPerWindowDict, AtoR, RtoA, windows, simulationMode, optimizationMode, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
+    def __init__(self, event_dict, eventsPerWindowDict, windows, simulationMode, optimizationMode, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
         self.P_Events = event_dict
         self.P_EventsPerWindowDict = eventsPerWindowDict
-        self.P_AtoR = AtoR
-        self.P_RtoA = RtoA
         self.P_Windows = windows
         self.P_Verbose = verbose
         self.P_SimulationMode = simulationMode
         self.P_OptimizationMode = optimizationMode
         
-        self.R = [r for r in RtoA.keys()]
-        self.A = [a for a in AtoR.keys()]
+        self.P_AtoR, self.P_RtoA = self.__GetAttributeResourceMapping()        
+        self.R = [r for r in self.P_RtoA.keys()]
+        self.A = [a for a in self.P_AtoR.keys()]
         
         self.completedTraces = list()
         self.callbacks = { x: None for x in Callbacks }
@@ -53,11 +52,33 @@ class Simulator:
         self.__vPrint(f'    -> TimestampMode: {self.TimestampMode}')
         self.__vPrint(f'    -> SimulationMode: {self.P_SimulationMode}')
         self.__vPrint(f'    -> LonelyResources: {self.LonelyResources}')
+        self.__vPrint(f'    -> Activity-Resource Mappping: {self.P_AtoR}')
 
     def __vPrint(self, msg):
         if self.P_Verbose:
             print(msg)
+    
+    
+    def __GetAttributeResourceMapping(self):
+        """ Get the mapping between Resources and Activities in order """
+        AtoR = {}
+        RtoA = {}
+        
+        for _, e in self.P_Events.items():
+            if e['act'] not in AtoR:
+                AtoR[e['act']] = []                
+            if e['res'] not in RtoA:
+                RtoA[e['res']] = []
             
+            if e['res'] not in AtoR[e['act']]:
+                AtoR[e['act']].append(e['res'])            
+            if e['act'] not in RtoA[e['res']]:
+                RtoA[e['res']].append(e['act'])
+        
+        return {a: sorted(AtoR[a]) for a in AtoR}, {r: sorted(RtoA[r]) for r in RtoA}
+        
+        
+        
     def __GetLonelyResources(self):
         """Lonely resources are carrying out activities without any other resource taking part in the same activity
         They have to be treated differently for e.g. fairness calculations"""
@@ -71,7 +92,7 @@ class Simulator:
                 for r in rList:
                     res[r] += [l for l in rList if l != r]
                 
-        return [r for r in res if len(list(set(res[r]))) == 0]
+        return sorted([r for r in res if len(list(set(res[r]))) == 0])
 
     def Register(self, callbackType, callback):
         self.callbacks[callbackType] = callback
@@ -105,7 +126,7 @@ class Simulator:
         for x in activeTraces:
             self.traces.remove(x)
             
-        return activeTraces
+        return sorted(activeTraces, key=lambda x: x.case)
     
     # Print iterations progress
     def printProgressBar(self, iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█', printEnd="\r"):
@@ -255,15 +276,22 @@ class Simulator:
                             if remainingTime < minRemainingTime:
                                 minRemainingTime = remainingTime
                                 
+                            # All resources busy, try again next simulation step
+                            if len(availableResources) == 0:
+                                break
+                                
                         # else:
                         #     print("    -> Warning: Resource scheduled but currently unavailable!")
 
-            if minRemainingTime > 0 and False:
-                print(f"{simulatedTimestep} - {minRemainingTime}")
+            if minRemainingTime > 0:
+                self.__vPrint(f"Timestep: {simulatedTimestep} - Skipping: {minRemainingTime}")
                 simulatedTimestep += minRemainingTime
             else:
                 simulatedTimestep += 1
-            #self.printProgressBar(len(self.completedTraces), self.traceCount, prefix='Progress:', suffix='Complete', length=50)
+            
+            if int((len(self.completedTraces) / self.traceCount) * 100) % 5 == 0:
+                self.printProgressBar(len(self.completedTraces), self.traceCount, prefix='Traces simulated:', suffix=f'Complete', length=50)
+
         print(f"Total time for simulation {time.time() - simStart :.1f}s") 
         print(f"    -> Windows simulated {currentWindow + 1} (given: {len(self.P_Windows)} / additional: {(currentWindow + 1) - len(self.P_Windows)})")
                 
