@@ -22,15 +22,17 @@ def FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, 
                     
                     resMat_TIME[data[2]] += end-start
                     timeTotal += end-start
-                
-        for r in R:
-            resMat_TIME[r] = 1 - resMat_TIME[r] / timeTotal # n/tot: How much work has the resource done, 1-: how much is still to do
-                
-            # Avoid stalling
-            if resMat_TIME[r] == 0:
-                resMat_TIME[r] = 0.001
-
-        return resMat_TIME
+        
+        if timeTotal > 0:   
+            for r in R:
+                resMat_TIME[r] = 1 - resMat_TIME[r] / timeTotal # n/tot: How much work has the resource done, 1-: how much is still to do
+                    
+                # Avoid stalling
+                if resMat_TIME[r] == 0:
+                    resMat_TIME[r] = 0.001
+            return resMat_TIME
+        else:
+            return {r: 1.0/len(R) for r in R}
         
 def FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N = 5):
         resMat_N = {r: 0 for r in R}        

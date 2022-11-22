@@ -86,17 +86,28 @@ def main(original, processed):
         df2.to_excel(writer, sheet_name='Original_TIME')
         del origLog
         
+        simData = {'Resource': df1['Resource'], 'ORIG-TIME' : df1['Relative-Time'], 'ORIG-WORK' : df1['Relative-Activities']}
+        
         for log in processed:
             fairLog = pm4py.read_xes(log)
             df1, df2 = GetActivityResourceMapping(fairLog)  
             
             fName = os.path.basename(log)
-            print(fName)
+            
+            simData[f'{fName}_TIME'] = df1['Relative-Time']
+            simData[f'{fName}_WORK'] = df1['Relative-Activities']
+
             df1.to_excel(writer, sheet_name=f'{fName}_WORK')
             df2.to_excel(writer, sheet_name=f'{fName}_TIME')  
             del fairLog
-
+    
+    with pd.ExcelWriter('data.xlsx') as writer:
+        df = pd.DataFrame(data=simData)
+        df.to_excel(writer, sheet_name=f'Data')
+        
 if __name__ == '__main__':
-    main('../logs/log_ResReduced.xes', 
-         ['../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes',
-          '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes'])
+    # main('../logs/log_ResReduced.xes', [os.path.join('../logs', f) for f in os.listdir('../logs') if os.path.isfile(os.path.join('../logs', f)) and f not in ['log_ResReduced.xes', 'log.xes']])
+    main('../logs/gen_Unfair2.xes', ['../logs/sim_genUnfair_WorkBacklog50.xes'])
+        #  ['../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes',
+        #   '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes',
+        #   '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500_CONSTANTLY_RESSCHEDULED.xes'])

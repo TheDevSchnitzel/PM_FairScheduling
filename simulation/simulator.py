@@ -19,6 +19,7 @@ class Simulator:
         self.P_SimulationMode = simulationMode
         
         self.R = [r for r in RtoA.keys()]
+        self.A = [a for a in AtoR.keys()]
         
         self.completedTraces = list()
         self.callbacks = { x: None for x in Callbacks }
@@ -45,6 +46,12 @@ class Simulator:
         
         # Get resources that only perform activities that no other resource can perform
         self.LonelyResources = self.__GetLonelyResources()
+        
+        # Startup-Information Display
+        self.__vPrint(f'### Simulator Data ###')
+        self.__vPrint(f'    -> TimestampMode: {self.TimestampMode}')
+        self.__vPrint(f'    -> SimulationMode: {self.P_SimulationMode}')
+        self.__vPrint(f'    -> LonelyResources: {self.LonelyResources}')
 
     def __vPrint(self, msg):
         if self.P_Verbose:
@@ -55,15 +62,15 @@ class Simulator:
         They have to be treated differently for e.g. fairness calculations"""
         lonelyResources = []
         
+        res = {r:[] for r in self.R}
+        
         for _, rSet in self.P_AtoR.items():
             rList = list(rSet)
-            if len(rList) == 1:
-                if rList[0] not in lonelyResources:
-                    lonelyResources.append(rList[0])
-            else:
-                notLonely = [r for r in lonelyResources if r in rList]
-                lonelyResources = list(set(lonelyResources) - set(notLonely))
-        return lonelyResources
+            if len(rList) > 1:
+                for r in rList:
+                    res[r] += [l for l in rList if l != r]
+                
+        return [r for r in res if len(list(set(res[r]))) == 0]
 
     def Register(self, callbackType, callback):
         self.callbacks[callbackType] = callback
@@ -165,9 +172,10 @@ class Simulator:
                     self.__vPrint(f"    -> Fairness-Callback took: {time.time() - fTimeStart}s")
                 
                 # Calculate congestion ratio - { per segment? }
+                cRatio = None
                 if self.callbacks[Callbacks.CALC_Congestion] is not None:
                     fTimeStart = time.time()
-                    cRatio = self.callbacks[Callbacks.CALC_Congestion](activeTraces, self.completedTraces, self.LonelyResources, self.R, self.P_Windows, currentWindow, simulatedTimestep)
+                    cRatio = self.callbacks[Callbacks.CALC_Congestion](activeTraces, self.completedTraces, self.LonelyResources, self.A, self.R, self.P_Windows, currentWindow, simulatedTimestep)
                     self.__vPrint(f"    -> Congestion-Callback took: {time.time() - fTimeStart}s")
                 
                 # Start new traces that arrive in this window
@@ -185,18 +193,18 @@ class Simulator:
                 if cbScheduling is not None:
                     fTimeStart = time.time()
                     
-                    # Get traces without a current schedule (no need to double schedule traces if they have already been scheduled)
-                    unscheduledTraces = [x for x in activeTraces if x.case not in schedule]
+                    # # Get traces without a current schedule (no need to double schedule traces if they have already been scheduled)
+                    # unscheduledTraces = [x for x in activeTraces if x.case not in schedule]
                     
-                    if len(unscheduledTraces) > 0:
-                        # Perform the scheduling callback (Leave it to the Sim-User to provide a way to calculate the schedule)
-                        newSchedule = cbScheduling(unscheduledTraces, self.P_AtoR, availableResources, simulatedTimestep, currentWindowUpper-currentWindowLower, fRatio)
+                    # if len(unscheduledTraces) > 0:
+                    #     # Perform the scheduling callback (Leave it to the Sim-User to provide a way to calculate the schedule)
+                    #     newSchedule = cbScheduling(unscheduledTraces, self.A, self.P_AtoR, availableResources, simulatedTimestep, currentWindowUpper-currentWindowLower, fRatio, cRatio)
                         
-                        # Merge schedule dicts (Trace-ID is key, no duplicates ;) )
-                        schedule = {**schedule, **newSchedule}
+                    #     # Merge schedule dicts (Trace-ID is key, no duplicates ;) )
+                    #     schedule = {**schedule, **newSchedule}
                                         
-                        self.__vPrint(f"    -> WND_START-Callback took: {time.time() - fTimeStart}s")
-
+                    #     self.__vPrint(f"    -> WND_START-Callback took: {time.time() - fTimeStart}s")
+                    schedule = cbScheduling(activeTraces, self.A, self.P_AtoR, availableResources, simulatedTimestep, currentWindowUpper-currentWindowLower, fRatio, cRatio)
                 
                 
             # Do the simulation that has to be done at each timestep (second???)
@@ -249,14 +257,14 @@ class Simulator:
                         # else:
                         #     print("    -> Warning: Resource scheduled but currently unavailable!")
 
-            if minRemainingTime > 0:
+            if minRemainingTime > 0 and False:
                 print(f"{simulatedTimestep} - {minRemainingTime}")
                 simulatedTimestep += minRemainingTime
             else:
                 simulatedTimestep += 1
             #self.printProgressBar(len(self.completedTraces), self.traceCount, prefix='Progress:', suffix='Complete', length=50)
         print(f"Total time for simulation {time.time() - simStart :.1f}s") 
-        print(f"    -> Windows simulated {currentWindow} (given: {len(self.P_Windows)} / additional: {currentWindow - len(self.P_Windows)})")
+        print(f"    -> Windows simulated {currentWindow} (given: {len(self.P_Windows)} / additional: {(currentWindow + 1) - len(self.P_Windows)})")
                 
     
     def ExportSimulationLog(self, logPath):

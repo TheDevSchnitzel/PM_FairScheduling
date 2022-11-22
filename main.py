@@ -9,7 +9,7 @@ import visualization.viz as viz
 from simulation.simulator import Simulator
 from simulation.objects.enums import Callbacks as SIM_Callbacks
 from simulation.objects.enums import SimulationModes as SIM_Modes
-from simulation.objects.enums import TimestampModes
+from simulation.objects.enums import TimestampModes, OptimizationModes
 from optimization.model import Model
 import networkx as nx
 import time
@@ -17,14 +17,24 @@ import utils.fairness as Fairness
 import utils.congestion as Congestion
 import json
 
+
+G_KnownActivityDurations = {}
+
 def argsParse():    
     parser = argparse.ArgumentParser()
     parser.add_argument('-l', '--log', default='logs/log.xes', type=str, help="The path to the event-log to be loaded")
 
     parser.add_argument('--actDurations', default=None, type=str, help="A dictionary of activities and their duration \'{\'A\': 1}\'")
     #parser.add_argument('--precision', default=0.0, type=float)
-
-    return parser.parse_args()
+    
+    argData = parser.parse_args()
+    
+    if argData.actDurations is not None:
+        print(argData.actDurations)
+        global G_KnownActivityDurations
+        G_KnownActivityDurations = json.loads(argData.actDurations)
+    
+    return argData
 
  
  
@@ -33,18 +43,21 @@ def argsParse():
 def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow):
     
     #return Fairness.FairnessEqualWork(R)
-    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=500)
+    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=50)
+    #return Fairness.FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=50)
     
 
-def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, simTime):
+def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources, A, R, windows, currentWindow, simTime):
     print("Congestion:")
-    a, b = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
-    print(a)
-    print(b)
-    pass
+    segmentFreq, segmentTime, waitingTraces = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
+    
+    # return Congestion.GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces)
+    return Congestion.GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces)
+
 
 #@profile
-def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResources, simTime, windowDuration, fRatio):
+def SimulatorWindowStartScheduling_Callback(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio):
+    global G_KnownActivityDurations
     print("MIP callback")
     
     # These are activity-resource schedulings, where only one resource is able to perform the activity => Hence, no need to add graph nodes
@@ -53,9 +66,12 @@ def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResou
     t = time.time()
     G = nx.DiGraph()
     
+    optMode = OptimizationModes.FAIRNESS
+    print(fRatio)
+    
     skipNoTraces = True
     skipNoResources = True
-    
+        
     for trace in activeTraces:
         if trace.IsWaiting():
             skipNoTraces = False
@@ -64,7 +80,7 @@ def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResou
             nextActivityDuration = trace.GetNextActivityTime(SIM_Modes.KNOWN_FUTURE, TimestampModes.END)
             
             # Either the activity takes more than one window or a duration could not be determined
-            if nextActivityDuration > windowDuration or  nextActivityDuration == 0:
+            if nextActivityDuration > windowDuration or nextActivityDuration == 0:
                 nextActivityDuration = windowDuration
                 
                 
@@ -76,9 +92,14 @@ def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResou
                 singleResponsibilitySchedule[trace.case] = {'StartTime': simTime, 'Resource': ableResources[0] } 
             else:
                 for r in ableResources:
-                    if fRatio[r] > 0:
+                    if optMode == OptimizationModes.FAIRNESS and fRatio[r] > 0:
                         # Multiply the weights by a large constant factor and round => Doc says floating points can cause issues: https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.flow.max_flow_min_cost.html#networkx.algorithms.flow.max_flow_min_cost
                         G.add_edge('c' + trace.case, r, weight = -int(1000 * fRatio[r]), capacity = nextActivityDuration)
+                    elif optMode == OptimizationModes.CONGESTION and cRatio[nextActivity] > 0:
+                        G.add_edge('c' + trace.case, r, weight = -int(1000 * cRatio[nextActivity]), capacity = nextActivityDuration)
+                    elif optMode == OptimizationModes.BOTH:
+                        # ??? Normalizing, Scaling and weighting cRatio and fRatio ????
+                        continue
             
     for r in availableResources:
         skipNoResources = False
@@ -103,13 +124,15 @@ def SimulatorWindowStartScheduling_Callback(activeTraces, P_AtoR, availableResou
         ret =  {case[1:]: {'StartTime': simTime, 'Resource': f(res)[0]} for case, res in M.items() if len(f(res)) > 0}
         
         #print(f"    -> Post: {time.time() - t}s")
-        return {**ret, **singleResponsibilitySchedule}
+        schedule = {**ret, **singleResponsibilitySchedule}
+        print(ret)
+        return schedule
    
    
     # Temporary simple schedule to test the simulator
     # return {x.case: {'StartTime':x.future[0][2] - 2000, 'Resource':x.future[0][1]} for x in activeTraces if x.IsWaiting()}
     
-    return {} # Schedule {caseid:resource}
+    return singleResponsibilitySchedule # Schedule {caseid:resource}
     
 def main():
     args = argsParse()
@@ -147,7 +170,8 @@ def main():
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Run()
-    sim.ExportSimulationLog('logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes')
+    sim.ExportSimulationLog('logs/sim_genUnfair_WorkBacklog50.xes')
+    #sim.ExportSimulationLog('logs/simulated_congestion_log_WAITING_TRACE_COUNT.xes')
 
 if __name__ == '__main__':
     main()
