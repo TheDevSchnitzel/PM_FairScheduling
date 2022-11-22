@@ -9,7 +9,7 @@ import pandas as pd
 
 class Simulator:
     
-    def __init__(self, event_dict, eventsPerWindowDict, AtoR, RtoA, windows, simulationMode, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
+    def __init__(self, event_dict, eventsPerWindowDict, AtoR, RtoA, windows, simulationMode, optimizationMode, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
         self.P_Events = event_dict
         self.P_EventsPerWindowDict = eventsPerWindowDict
         self.P_AtoR = AtoR
@@ -17,6 +17,7 @@ class Simulator:
         self.P_Windows = windows
         self.P_Verbose = verbose
         self.P_SimulationMode = simulationMode
+        self.P_OptimizationMode = optimizationMode
         
         self.R = [r for r in RtoA.keys()]
         self.A = [a for a in AtoR.keys()]
@@ -204,7 +205,7 @@ class Simulator:
                     #     schedule = {**schedule, **newSchedule}
                                         
                     #     self.__vPrint(f"    -> WND_START-Callback took: {time.time() - fTimeStart}s")
-                    schedule = cbScheduling(activeTraces, self.A, self.P_AtoR, availableResources, simulatedTimestep, currentWindowUpper-currentWindowLower, fRatio, cRatio)
+                    schedule = cbScheduling(activeTraces, self.A, self.P_AtoR, availableResources, simulatedTimestep, currentWindowUpper-currentWindowLower, fRatio, cRatio, self.P_OptimizationMode)
                 
                 
             # Do the simulation that has to be done at each timestep (second???)
@@ -264,7 +265,7 @@ class Simulator:
                 simulatedTimestep += 1
             #self.printProgressBar(len(self.completedTraces), self.traceCount, prefix='Progress:', suffix='Complete', length=50)
         print(f"Total time for simulation {time.time() - simStart :.1f}s") 
-        print(f"    -> Windows simulated {currentWindow} (given: {len(self.P_Windows)} / additional: {(currentWindow + 1) - len(self.P_Windows)})")
+        print(f"    -> Windows simulated {currentWindow + 1} (given: {len(self.P_Windows)} / additional: {(currentWindow + 1) - len(self.P_Windows)})")
                 
     
     def ExportSimulationLog(self, logPath):

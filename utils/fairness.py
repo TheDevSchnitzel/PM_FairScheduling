@@ -35,13 +35,14 @@ def FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, 
             return {r: 1.0/len(R) for r in R}
         
 def FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N = 5):
-        resMat_N = {r: 0 for r in R}        
+        resMat_N = {r: 0 for r in R if r not in LonelyResources}        
         nTotal   = 0
                 
         minTS = windows[max([0, currentWindow - BACKLOG_N])][0]
         maxTS = windows[currentWindow][1]
                 
         for trace in completedTraces + activeTraces:
+            #print(trace.history)
             for data in trace.history:
                 if minTS <= data[0] or data[1] <= maxTS:
                     # Exclude resources that are the only ones able to perform a specific activity from this calculation
@@ -53,7 +54,7 @@ def FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, 
         if nTotal == 0:
             return {r: 1.0/len(R) for r in R}
         else:    
-            for r in R:
+            for r in resMat_N:
                 resMat_N[r] = 1 - (resMat_N[r] / nTotal) # n/tot: How much work has the resource done, 1-: how much is still to do
                 
                 # Avoid stalling
