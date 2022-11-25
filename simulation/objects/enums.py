@@ -20,3 +20,7 @@ class OptimizationModes(Enum):
     CONGESTION = 1
     BOTH       = 2
     
+class SchedulingBehaviour(Enum):
+    KEEP_ASSIGNMENTS              = 0
+    CLEAR_ASSIGNMENTS_EACH_WINDOW = 1
+    

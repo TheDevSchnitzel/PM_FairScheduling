@@ -47,6 +47,9 @@ class Trace:
             raise Exception("Unknown mode for simulation!")
         
     def GetRemainingActivityTime(self, mode: TimestampModes,  time: int) -> int:
+        
+        return 0
+    
         if self.currentAct is None:
             return 0
         elif len(self.currentAct[2]) == 3:
@@ -71,6 +74,7 @@ class Trace:
             raise Exception("Illegal state!")
     
     def GetNextActivityTime(self, simMode: SimulationModes, timeMode: TimestampModes) -> int:
+        return 1
         if simMode == SimulationModes.KNOWN_FUTURE:
             if len(self.future) == 0:
                 return 0
