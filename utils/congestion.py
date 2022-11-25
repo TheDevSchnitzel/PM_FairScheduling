@@ -25,6 +25,7 @@ def GetActiveSegments(activeTraces, simTime, simMode):
                 
                 # Time spent in this segment
                 segmentTime[(lastAct, nextAct)] = simTime - lastTs
+    print(segmentFreq)
     return segmentFreq, segmentTime, waitingTraces
 
 def GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces):

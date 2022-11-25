@@ -13,16 +13,36 @@ import utils.fairness as Fairness
 import utils.congestion as Congestion
 import utils.optimization as Optimization
 import json
+import signal
+import time
 
 
 G_KnownActivityDurations = {}
+scriptArgs = None
+simulator = None
 
-def argsParse():    
+def handler(signum, frame):
+    global simulator
+    global scriptArgs
+    if simulator is not None:
+        simulator.HandleSimulationAbort()
+        simulator.ExportSimulationLog(scriptArgs.out, exportSimulatorStartEndTimestamp=False)
+    exit(1)
+    
+signal.signal(signal.SIGINT, handler)
+
+def argsParse(): 
+    global scriptArgs   
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('-l', '--log', default='logs/log.xes', type=str, help="The path to the event-log to be loaded")
+    parser.add_argument('-o', '--out', default='logs/simLog.xes', type=str, help="The path to which the simulated event-log will be exported")
 
     parser.add_argument('--actDurations', default=None, type=str, help="A dictionary of activities and their duration \'{\'A\': 1}\'")
     #parser.add_argument('--precision', default=0.0, type=float)
+    
+    parser.add_argument('-F', '--Fair', default='W', type=str, help="W: Amount of work / T: Time spent working")
+    parser.add_argument('--FairnessBacklogN', default=50, type=int, help="Number of passed windows to consider for fairness calculations")
     
     argData = parser.parse_args()
     
@@ -31,6 +51,7 @@ def argsParse():
         global G_KnownActivityDurations
         G_KnownActivityDurations = json.loads(argData.actDurations)
     
+    scriptArgs = argData
     return argData
 
  
@@ -38,21 +59,25 @@ def argsParse():
  
  
 def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow):
+    global scriptArgs
     
     #return Fairness.FairnessEqualWork(R)
-    return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=200)
-    #return Fairness.FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=50)
+    if scriptArgs.Fair == "W":
+        return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=scriptArgs.FairnessBacklogN)
+    elif scriptArgs.Fair == "T":
+        return Fairness.FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=scriptArgs.FairnessBacklogN)
     
 
 def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources, A, R, windows, currentWindow, simTime):
-    print("Congestion:")
+    #print("Congestion:")
     segmentFreq, segmentTime, waitingTraces = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
     
     # return Congestion.GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces)
     return Congestion.GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces)
 
 def SimulatorWindowStartScheduling_Callback(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
-    return Optimization.OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
+    return Optimization.SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
+    #return Optimization.OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
 
 def main():
     args = argsParse()
@@ -86,13 +111,18 @@ def main():
     sim = Simulator(event_dict, eventsPerWindowDict, bucketId_borders_dict, 
                     simulationMode=SIM_Modes.KNOWN_FUTURE,
                     optimizationMode = OptimizationModes.FAIRNESS, 
+                    #optimizationMode = OptimizationModes.CONGESTION, 
                     endTimestampAttribute='ts', 
-                    verbose=False)
+                    verbose=True)
+    
+    global simulator
+    simulator = sim
+    
     sim.Register(SIM_Callbacks.WND_START_SCHEDULING, SimulatorWindowStartScheduling_Callback)
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
-    # sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
+    #sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Run()
-    sim.ExportSimulationLog('logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_200_CONSTANTLY_RESSCHEDULED_NEW_GRAPH5.xes')
+    sim.ExportSimulationLog(args.out)
     #sim.ExportSimulationLog('logs/simulated_congestion_log_WAITING_TRACE_COUNT.xes')
 
 if __name__ == '__main__':

@@ -106,8 +106,9 @@ def main(original, processed):
         df.to_excel(writer, sheet_name=f'Data')
         
 if __name__ == '__main__':
-    # main('../logs/log_ResReduced.xes', [os.path.join('../logs', f) for f in os.listdir('../logs') if os.path.isfile(os.path.join('../logs', f)) and f not in ['log_ResReduced.xes', 'log.xes']])
-    main('../logs/gen_Unfair2.xes', ['../logs/sim_genUnfair_WorkBacklog50.xes'])
+    #main('../logs/log_ResReduced.xes', [os.path.join('../logs', f) for f in os.listdir('../logs') if os.path.isfile(os.path.join('../logs', f)) and f not in ['log_ResReduced.xes', 'log.xes']])
+    main('../logs/log_ResReduced.xes', [os.path.join('../logs', f) for f in os.listdir('../logs') if f.startswith('F') and os.path.isfile(os.path.join('../logs', f)) and f not in ['log_ResReduced.xes', 'log.xes']])
+    #main('../logs/gen_Unfair2.xes', ['../logs/sim_genUnfair_WorkBacklog50.xes'])
         #  ['../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes',
         #   '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes',
         #   '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500_CONSTANTLY_RESSCHEDULED.xes'])

@@ -6,12 +6,29 @@ import networkx as nx
 from simulation.objects.enums import SimulationModes as SIM_Modes
 from simulation.objects.enums import TimestampModes, OptimizationModes
 
+def SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
+    """Schedule exactly like in the original log to see how it's going - Test this with scheduling every single timestep, not window based!"""
+    
+    data = [(trace.case, trace.future[0][1], trace.future[0][2]) for trace in activeTraces if trace.IsWaiting()]
+    data = sorted(data, key=lambda x: x[2]) #Sort by ts
+    
+    sched = {}
+    resUsed = []
+    for (case, res, ts) in data:
+        if res not in resUsed:
+            sched[case] = {'StartTime': ts, 'Resource': res}
+            resUsed.append(res)
+    return sched
+        
+        
 
 def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
     # These are activity-resource schedulings, where only one resource is able to perform the activity => Hence, no need to add graph nodes
     singleResponsibilitySchedule = {}
         
     G = nx.DiGraph()
+            
+    print(f'T: {len(activeTraces)} - {cRatio}')
             
     skipNoTraces = True
     skipNoResources = True
@@ -32,15 +49,15 @@ def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, w
                 singleResponsibilitySchedule[trace.case] = {'StartTime': simTime, 'Resource': ableResources[0] } 
             else:
                 skipNoTraces = False
-                G.add_edge('s', 'c' + trace.case, capacity = windowDuration)
-                totalActivityDuration += nextActivityDuration
+                G.add_edge('s', 'c' + trace.case, capacity = windowDuration) # Factor smaller than cRatio/fRatio, only steer
+                totalActivityDuration += int(nextActivityDuration) + 1
                 
                 for r in ableResources:
                     if optimizationMode == OptimizationModes.FAIRNESS and fRatio[r] > 0:
                         # Multiply the weights by a large constant factor and round => Doc says floating points can cause issues: https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.flow.max_flow_min_cost.html#networkx.algorithms.flow.max_flow_min_cost
-                        G.add_edge('c' + trace.case, r, weight = -int(1000 * fRatio[r]), capacity = int(nextActivityDuration) + 1)
+                        G.add_edge('c' + trace.case, r, weight = -int(100000 * fRatio[r]), capacity = int(nextActivityDuration) + 1)
                     elif optimizationMode == OptimizationModes.CONGESTION and cRatio[nextActivity] > 0:
-                        G.add_edge('c' + trace.case, r, weight = -int(1000 * cRatio[nextActivity]), capacity = int(nextActivityDuration) + 1)
+                        G.add_edge('c' + trace.case, r, weight = -int(100000 * cRatio[nextActivity]), capacity = int(nextActivityDuration) + 1)
                     elif optimizationMode == OptimizationModes.BOTH:
                         # ??? Normalizing, Scaling and weighting cRatio and fRatio ????
                         continue
