@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 from pm4py.objects.conversion.log import converter as log_converter
 import pandas as pd
+import math
 
 class Simulator:
     
@@ -67,6 +68,28 @@ class Simulator:
     def __vPrint(self, msg):
         if self.P_Verbose:
             print(msg)    
+    
+    def __GetSimulatorState(self, currentWindow):
+        return {
+            'CurrentTimestep':       self.SimulatedTimestep,
+            'CurrentWindow':         currentWindow,
+            'CurrentWindowLower':    self.P_Windows[currentWindow][0],
+            'CurrentWindowUpper':    self.P_Windows[currentWindow][1],
+            'CurrentWindowDuration': self.P_Windows[currentWindow][1] - self.P_Windows[currentWindow][0],
+            'Windows': self.P_Windows,
+            'Verbose': self.P_Verbose,
+            'SimulationMode':      self.P_SimulationMode,
+            'OptimizationMode':    self.P_OptimizationMode,
+            'SchedulingBehaviour': self.P_SchedulingBehaviour,   
+            'TimestampMode':       self.TimestampMode,
+            'AtoR': self.P_AtoR, 
+            'RtoA': self.P_RtoA,
+            'R':    self.R,
+            'A':    self.A,
+            'LonelyResources': self.LonelyResources,
+            'CompletedTraces': self.completedTraces,
+            'ActiveTraces':    self.activeTraces
+        }
     
     def __GetAttributeResourceMapping(self):
         """ Get the mapping between Resources and Activities in order """
@@ -157,10 +180,6 @@ class Simulator:
                     # Find the matching event
                     if fAct == act and fRes == r and fTs == ts:
                         trace.durations[j] = int(min(resBasedDuration, traceBasedDuration))
-
-                
-                
-        
     
     def __GetNewlyBeginningTraces(self, windowLower, windowUpper):
         activeTracesList = [x for x in self.traces if x.NextEventInWindow(windowLower, windowUpper)]
@@ -183,11 +202,13 @@ class Simulator:
         return ret
     
     def __RunScheduler(self, currentSchedule, currentWindow, currentWindowDuration):
+        state = self.__GetSimulatorState(currentWindow)
+        
         # Calculate fairness ratio
-        fRatio = self.__Call(Callbacks.CALC_Fairness, (self.activeTraces, self.completedTraces, self.LonelyResources, self.R, self.P_Windows, currentWindow))
+        fRatio = self.__Call(Callbacks.CALC_Fairness, [state])
         
         # Calculate congestion ratio
-        cRatio = self.__Call(Callbacks.CALC_Congestion, (self.activeTraces, self.completedTraces, self.LonelyResources, self.A, self.R, self.P_Windows, currentWindow, self.SimulatedTimestep))
+        cRatio = self.__Call(Callbacks.CALC_Congestion, [state])
         
         # Add resources which will become free during this window to be scheduled
         schedulingReadyResources = {r: currentWindowDuration for r in self.R}
@@ -203,17 +224,22 @@ class Simulator:
             unscheduledTraces = [x for x in self.activeTraces if x.case not in currentSchedule]
             
             if len(unscheduledTraces) > 0:
+                # Manipulate the state such that already scheduled active traces won't appear
+                state['ActiveTraces'] = unscheduledTraces
+                
                 # Perform the scheduling callback (Leave it to the Sim-User to provide a way to calculate the schedule)
-                newSchedule = self.__Call(Callbacks.WND_START_SCHEDULING, (unscheduledTraces, self.A, self.P_AtoR, schedulingReadyResources, self.SimulatedTimestep, currentWindowDuration, fRatio, cRatio, self.P_OptimizationMode))
+                newSchedule = self.__Call(Callbacks.WND_START_SCHEDULING, (state, schedulingReadyResources, fRatio, cRatio))
                 
                 # Merge schedule dicts (Trace-ID is key, no duplicates ;) )
                 return {**currentSchedule, **newSchedule}
             else:
                 return currentSchedule                            
         elif self.P_SchedulingBehaviour == SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW:
-            return self.__Call(Callbacks.WND_START_SCHEDULING, (self.activeTraces, self.A, self.P_AtoR, schedulingReadyResources, self.SimulatedTimestep, currentWindowDuration, fRatio, cRatio, self.P_OptimizationMode))
+            return self.__Call(Callbacks.WND_START_SCHEDULING, (state, schedulingReadyResources, fRatio, cRatio))
         else:
             return {}
+    
+    
                 
     
     ##############################################
@@ -262,7 +288,8 @@ class Simulator:
                 self.__vPrint(f'    - Traces (Active / Finished / Total): {len(self.activeTraces)} / {len(self.completedTraces)} / {self.traceCount}')
                 self.__vPrint(f'    - Progress: {len(self.completedTraces) / self.traceCount * 100}% complete traces')
                 if not self.P_Verbose:
-                    print(f'\rProgress: {len(self.completedTraces) / self.traceCount * 100:3.2f}% complete - Traces (Active / Finished / Total): {len(self.activeTraces)} / {len(self.completedTraces)} / {self.traceCount}', end = '\r')
+                    digits = int(math.log10(self.traceCount)+1)
+                    print(f'\rProgress: {len(self.completedTraces) / self.traceCount * 100:3.2f}% complete - Traces (Active / Finished / Total): {len(self.activeTraces):{digits}d} / {len(self.completedTraces):{digits}d} / {self.traceCount:{digits}d}', end = '\r')
                             
                 # Start new traces that arrive in this window
                 self.activeTraces = self.activeTraces + self.__GetNewlyBeginningTraces(currentWindowLower, currentWindowUpper)

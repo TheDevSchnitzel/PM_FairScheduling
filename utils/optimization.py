@@ -6,8 +6,12 @@ import networkx as nx
 from simulation.objects.enums import SimulationModes as SIM_Modes
 from simulation.objects.enums import TimestampModes, OptimizationModes
 
-def SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
+def SimulatorTestScheduling(simulatorState, availableResources, fRatio, cRatio):
     """Schedule exactly like in the original log to see how it's going - Test this with scheduling every single timestep, not window based!"""
+    
+    # Parameter extraction
+    activeTraces     = simulatorState['ActiveTraces']
+
     
     data = [(trace.case, trace.future[0][1], trace.future[0][2]) for trace in activeTraces if trace.IsWaiting()]
     data = sorted(data, key=lambda x: x[2]) #Sort by ts
@@ -22,7 +26,14 @@ def SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime
         
         
 
-def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
+def OptimizeActiveTraces(simulatorState, availableResources, fRatio, cRatio):
+    # Parameter extraction
+    activeTraces     = simulatorState['ActiveTraces']
+    AtoR             = simulatorState['AtoR']
+    simTime          = simulatorState['CurrentTimestep']
+    windowDuration   = simulatorState['CurrentWindowDuration']
+    optimizationMode = simulatorState['OptimizationMode']
+    
     # These are activity-resource schedulings, where only one resource is able to perform the activity => Hence, no need to add graph nodes
     singleResponsibilitySchedule = {}
         
@@ -42,7 +53,7 @@ def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, w
                 nextActivityDuration = windowDuration
                             
             # If there is only one resource able to perform the activity, we do not need to integrate it into the flow-graph as there is no other assignment choice
-            ableResources = list(P_AtoR[nextActivity])            
+            ableResources = list(AtoR[nextActivity])            
             if len(ableResources) == 1:
                 singleResponsibilitySchedule[trace.case] = {'StartTime': simTime, 'Resource': ableResources[0] } 
             else:

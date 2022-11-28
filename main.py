@@ -27,9 +27,9 @@ def handler(signum, frame):
     if simulator is not None:
         simulator.HandleSimulationAbort()
         simulator.ExportSimulationLog(scriptArgs.out, exportSimulatorStartEndTimestamp=False)
-    exit(1)
-    
+    exit(1)    
 signal.signal(signal.SIGINT, handler)
+
 
 def argsParse(): 
     global scriptArgs   
@@ -60,24 +60,26 @@ def argsParse():
  
  
  
-def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow):
-    global scriptArgs
-    
+def SimulatorFairness_Callback(simulatorState):
+    global scriptArgs       
+        
     if scriptArgs.Fair == "W":
-        return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=scriptArgs.FairnessBacklogN)
+        return Fairness.FairnessBacklogFair_WORK(simulatorState, BACKLOG_N=scriptArgs.FairnessBacklogN)
     elif scriptArgs.Fair == "T":
-        return Fairness.FairnessBacklogFair_TIME(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=scriptArgs.FairnessBacklogN)
+        return Fairness.FairnessBacklogFair_TIME(simulatorState, BACKLOG_N=scriptArgs.FairnessBacklogN)
+    
     
 
-def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources, A, R, windows, currentWindow, simTime):
-    segmentFreq, segmentTime, waitingTraces = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
+def SimulatorCongestion_Callback(simulatorState):
+    #segmentFreq, segmentTime, waitingTraces = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
     
     # return Congestion.GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces)
-    return Congestion.GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces)
+    #return Congestion.GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces)
+    return {}
 
-def SimulatorWindowStartScheduling_Callback(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
+def SimulatorWindowStartScheduling_Callback(simulatorState, schedulingReadyResources, fRatio, cRatio):
     #return Optimization.SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
-    return Optimization.OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
+    return Optimization.OptimizeActiveTraces(simulatorState, schedulingReadyResources, fRatio, cRatio)
 
 def main():
     args = argsParse()
