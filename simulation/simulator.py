@@ -9,7 +9,7 @@ import pandas as pd
 
 class Simulator:
     
-    def __init__(self, event_dict, eventsPerWindowDict, windows, simulationMode, optimizationMode, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
+    def __init__(self, event_dict, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
         self.P_Events = event_dict
         self.P_EventsPerWindowDict = eventsPerWindowDict
         self.P_Windows = windows
@@ -17,7 +17,7 @@ class Simulator:
         self.P_Verbose = verbose
         self.P_SimulationMode = simulationMode
         self.P_OptimizationMode = optimizationMode
-        self.P_SchedulingBehaviour = SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW
+        self.P_SchedulingBehaviour = schedulingBehaviour
         
         self.P_AtoR, self.P_RtoA = self.__GetAttributeResourceMapping()        
         self.R = [r for r in self.P_RtoA.keys()]
@@ -105,7 +105,7 @@ class Simulator:
         
         # Build the event traces
         for _, e in self.P_Events.items():
-            eventTraces[e['cid']].append(e)
+            eventTraces[e['cid']].append(e)            
         
         # Sort events in traces by timestamp
         for cid in eventTraces.keys():
@@ -116,8 +116,51 @@ class Simulator:
                 eventTraces[cid].sort(key=lambda e: e[self.TimestampAttribute[0]])
                 self.traces.append(Trace(str(cid), [(e['act'], e['res'], e[self.TimestampAttribute[0]], e[self.TimestampAttribute[1]]) for e in eventTraces[cid]]))
         
-            print(self.traces[-1].future)
-        self.traceCount = len(self.traces)
+        self.traceCount = len(self.traces)        
+        self.__CalculateTraceEventDurations()
+    
+    def __CalculateTraceEventDurations(self):
+        # Calculate activity durations properly
+        resList = {r:[] for r in self.R}
+        traceDict = {trace.case: trace for trace in self.traces}
+        for trace in self.traces:
+            cid = trace.case
+            
+            for event in trace.future:
+                act = event[0]
+                res = event[1]
+                ts  = event[2]
+                
+                resList[res].append((act, ts, cid))
+        
+        resList = {r: sorted(resList[r], key=lambda x: x[1]) for r in self.R} # Order by TS
+        for r in self.R:
+            for i in range(len(resList[r])):
+                (act, ts, cid) = resList[r][i]
+                trace = traceDict[cid]
+                
+                if i > 0:
+                    resBasedDuration = ts - resList[r][i-1][1] # Time between previous and current event on resource r
+                else:
+                    resBasedDuration = 1
+                
+                for j in range(len(trace.future)):
+                    fAct = trace.future[j][0]
+                    fRes = trace.future[j][1]
+                    fTs  = trace.future[j][2]
+                    
+                    if j > 0:
+                        traceBasedDuration = fTs - trace.future[j-1][2] # Time between previous and current event in the trace
+                    else:
+                        traceBasedDuration = 1
+                    
+                    # Find the matching event
+                    if fAct == act and fRes == r and fTs == ts:
+                        trace.durations[j] = int(min(resBasedDuration, traceBasedDuration))
+
+                
+                
+        
     
     def __GetNewlyBeginningTraces(self, windowLower, windowUpper):
         activeTracesList = [x for x in self.traces if x.NextEventInWindow(windowLower, windowUpper)]
@@ -157,19 +200,20 @@ class Simulator:
         # Call to get the new schedule (most likely a MIP scheduling)
         if self.P_SchedulingBehaviour == SchedulingBehaviour.KEEP_ASSIGNMENTS:
             # Get traces without a current schedule (no need to double schedule traces if they have already been scheduled)
-            unscheduledTraces = [x for x in self.activeTraces if x.case not in schedule]
+            unscheduledTraces = [x for x in self.activeTraces if x.case not in currentSchedule]
             
             if len(unscheduledTraces) > 0:
                 # Perform the scheduling callback (Leave it to the Sim-User to provide a way to calculate the schedule)
                 newSchedule = self.__Call(Callbacks.WND_START_SCHEDULING, (unscheduledTraces, self.A, self.P_AtoR, schedulingReadyResources, self.SimulatedTimestep, currentWindowDuration, fRatio, cRatio, self.P_OptimizationMode))
                 
                 # Merge schedule dicts (Trace-ID is key, no duplicates ;) )
-                schedule = {**currentSchedule, **newSchedule}
-                            
+                return {**currentSchedule, **newSchedule}
+            else:
+                return currentSchedule                            
         elif self.P_SchedulingBehaviour == SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW:
-            schedule = self.__Call(Callbacks.WND_START_SCHEDULING, (self.activeTraces, self.A, self.P_AtoR, schedulingReadyResources, self.SimulatedTimestep, currentWindowDuration, fRatio, cRatio, self.P_OptimizationMode))
-        
-        return schedule
+            return self.__Call(Callbacks.WND_START_SCHEDULING, (self.activeTraces, self.A, self.P_AtoR, schedulingReadyResources, self.SimulatedTimestep, currentWindowDuration, fRatio, cRatio, self.P_OptimizationMode))
+        else:
+            return {}
                 
     
     ##############################################
@@ -217,6 +261,8 @@ class Simulator:
                 self.__vPrint(f' ### New Window {currentWindow} - {datetime.fromtimestamp(currentWindowLower)} <==> {datetime.fromtimestamp(currentWindowUpper)} ###')
                 self.__vPrint(f'    - Traces (Active / Finished / Total): {len(self.activeTraces)} / {len(self.completedTraces)} / {self.traceCount}')
                 self.__vPrint(f'    - Progress: {len(self.completedTraces) / self.traceCount * 100}% complete traces')
+                if not self.P_Verbose:
+                    print(f'\rProgress: {len(self.completedTraces) / self.traceCount * 100:3.2f}% complete - Traces (Active / Finished / Total): {len(self.activeTraces)} / {len(self.completedTraces)} / {self.traceCount}', end = '\r')
                             
                 # Start new traces that arrive in this window
                 self.activeTraces = self.activeTraces + self.__GetNewlyBeginningTraces(currentWindowLower, currentWindowUpper)
@@ -224,9 +270,7 @@ class Simulator:
                 # Call the scheduler
                 schedule = self.__RunScheduler(schedule, currentWindow, currentWindowUpper - currentWindowLower)
                 
-            
-                
-                
+                            
             # Do the simulation that has to be done at each timestep (second???)
             # Apply pre-calculated schedule
             # Begin new / end old traces
@@ -250,21 +294,20 @@ class Simulator:
                             self.completedTraces.append(trace)
                     elif remainingTime < minRemainingTime:
                         minRemainingTime = remainingTime
-                        
-                # self.vPrint(f"    -> Trace '{trace.case}', Waiting: '{trace.IsWaiting()}', Running: '{trace.HasRunningActivity()}'")
-                            
+                                                    
             # As the previous step released new resources, now start new activities that might need them (double assigned resources)
             for trace in self.activeTraces:
                 if trace.IsWaiting():
                     # It the trace on the schedule?
                     traceSched = schedule.get(trace.case)
+                    
                     if traceSched is not None and traceSched['StartTime'] <= self.SimulatedTimestep:
                         if traceSched['Resource'] in availableResources:
                             self.__vPrint(f"    -> Trace '{trace.case}' about to start on res '{traceSched['Resource']}' at simtime {self.SimulatedTimestep}")
                             
                             # Assign the next activity a resource and let it run
                             trace.StartNextActivity(self.P_SimulationMode, self.SimulatedTimestep, traceSched['Resource'])
-                            
+                                                        
                             # Remove trace from current schedule
                             del availableResources[traceSched['Resource']]
                             del schedule[trace.case]
@@ -277,17 +320,14 @@ class Simulator:
                             # All resources busy, try again next simulation step
                             if len(availableResources) == 0:
                                 break
-                                
-                        # else:
-                        #     print("    -> Warning: Resource scheduled but currently unavailable!")
 
             if minRemainingTime > 0:
                 self.__vPrint(f"Timestep: {self.SimulatedTimestep} - Skipping: {minRemainingTime}")
                 self.SimulatedTimestep += minRemainingTime
             else:
                 self.SimulatedTimestep += 1
-                
-        print(f"Total time for simulation {time.time() - simStart :.1f}s") 
+                            
+        print(f"\n\nTotal time for simulation {time.time() - simStart :.1f}s") 
         print(f"    -> Windows simulated {currentWindow + 1} (given: {self.P_WindowCount} / additional: {(currentWindow + 1) - self.P_WindowCount})")
     
     def HandleSimulationAbort(self):

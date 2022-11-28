@@ -27,9 +27,7 @@ def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, w
     singleResponsibilitySchedule = {}
         
     G = nx.DiGraph()
-            
-    print(f'T: {len(activeTraces)} - {cRatio}')
-            
+                        
     skipNoTraces = True
     skipNoResources = True
     totalActivityDuration = 0
@@ -69,12 +67,8 @@ def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, w
     # Collect multi-flows
     G.add_edge('d', 't', capacity = totalActivityDuration)
     
-    #print(G.edges.data())
     if not skipNoTraces and not skipNoResources:
-        #print(f"    -> Nodes: {len(G.nodes())}")
         M = nx.max_flow_min_cost(G, 's', 't')
-        #print(M)
-        #print(f'Cost: {nx.cost_of_flow(G, M)}')
         
         del M['s']
         del M['t']
@@ -83,10 +77,7 @@ def OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, w
         
         f = lambda x: [res for res, val in x.items() if val > 0]
         ret =  {case[1:]: {'StartTime': simTime, 'Resource': f(res)[0]} for case, res in M.items() if len(f(res)) > 0}
-        
-        schedule = {**ret, **singleResponsibilitySchedule}
-        #print(ret)
-        return schedule
+        return {**ret, **singleResponsibilitySchedule}
    
    
     # Temporary simple schedule to test the simulator
