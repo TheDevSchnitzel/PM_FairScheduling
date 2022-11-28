@@ -8,7 +8,7 @@ import visualization.viz as viz
 from simulation.simulator import Simulator
 from simulation.objects.enums import Callbacks as SIM_Callbacks
 from simulation.objects.enums import SimulationModes as SIM_Modes
-from simulation.objects.enums import TimestampModes, OptimizationModes
+from simulation.objects.enums import TimestampModes, OptimizationModes, SchedulingBehaviour
 import utils.fairness as Fairness
 import utils.congestion as Congestion
 import utils.optimization as Optimization
@@ -44,6 +44,8 @@ def argsParse():
     parser.add_argument('-F', '--Fair', default='W', type=str, help="W: Amount of work / T: Time spent working")
     parser.add_argument('--FairnessBacklogN', default=50, type=int, help="Number of passed windows to consider for fairness calculations")
     
+    parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Display additional runtime information")
+    
     argData = parser.parse_args()
     
     if argData.actDurations is not None:
@@ -61,7 +63,6 @@ def argsParse():
 def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow):
     global scriptArgs
     
-    #return Fairness.FairnessEqualWork(R)
     if scriptArgs.Fair == "W":
         return Fairness.FairnessBacklogFair_WORK(activeTraces, completedTraces, LonelyResources, R, windows, currentWindow, BACKLOG_N=scriptArgs.FairnessBacklogN)
     elif scriptArgs.Fair == "T":
@@ -69,15 +70,14 @@ def SimulatorFairness_Callback(activeTraces, completedTraces, LonelyResources, R
     
 
 def SimulatorCongestion_Callback(activeTraces, completedTraces, LonelyResources, A, R, windows, currentWindow, simTime):
-    #print("Congestion:")
     segmentFreq, segmentTime, waitingTraces = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
     
     # return Congestion.GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces)
     return Congestion.GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces)
 
 def SimulatorWindowStartScheduling_Callback(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode):
-    return Optimization.SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
-    #return Optimization.OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
+    #return Optimization.SimulatorTestScheduling(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
+    return Optimization.OptimizeActiveTraces(activeTraces, A, P_AtoR, availableResources, simTime, windowDuration, fRatio, cRatio, optimizationMode)
 
 def main():
     args = argsParse()
@@ -109,11 +109,12 @@ def main():
     
     # Simulation -> Callback at the beginning / end of each window
     sim = Simulator(event_dict, eventsPerWindowDict, bucketId_borders_dict, 
-                    simulationMode=SIM_Modes.KNOWN_FUTURE,
-                    optimizationMode = OptimizationModes.FAIRNESS, 
-                    #optimizationMode = OptimizationModes.CONGESTION, 
-                    endTimestampAttribute='ts', 
-                    verbose=True)
+                    simulationMode      = SIM_Modes.KNOWN_FUTURE,
+                    optimizationMode    = OptimizationModes.FAIRNESS, 
+                    #optimizationMode    = OptimizationModes.CONGESTION, 
+                    schedulingBehaviour = SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW,
+                    #schedulingBehaviour = SchedulingBehaviour.KEEP_ASSIGNMENTS,
+                    endTimestampAttribute='ts', verbose=args.verbose)
     
     global simulator
     simulator = sim
