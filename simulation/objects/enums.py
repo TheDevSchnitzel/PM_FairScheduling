@@ -5,6 +5,7 @@ class Callbacks(Enum):
     WND_END_SCHEDULING   = 1
     CALC_Fairness        = 2
     CALC_Congestion      = 4
+    CALC_EventDurations  = 8
     
 class TimestampModes(Enum):
     START   = 0

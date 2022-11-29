@@ -15,7 +15,7 @@ import utils.optimization as Optimization
 import json
 import signal
 import time
-
+from utils.activityDuration import EventDurationsByMinPossibleTime
 
 G_KnownActivityDurations = {}
 scriptArgs = None
@@ -124,6 +124,7 @@ def main():
     sim.Register(SIM_Callbacks.WND_START_SCHEDULING, SimulatorWindowStartScheduling_Callback)
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     #sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
+    sim.Register(SIM_Callbacks.CALC_EventDurations, lambda x,y: EventDurationsByMinPossibleTime(x,y))
     sim.Run()
     sim.ExportSimulationLog(args.out)
     #sim.ExportSimulationLog('logs/simulated_congestion_log_WAITING_TRACE_COUNT.xes')

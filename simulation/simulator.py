@@ -139,47 +139,7 @@ class Simulator:
                 eventTraces[cid].sort(key=lambda e: e[self.TimestampAttribute[0]])
                 self.traces.append(Trace(str(cid), [(e['act'], e['res'], e[self.TimestampAttribute[0]], e[self.TimestampAttribute[1]]) for e in eventTraces[cid]]))
         
-        self.traceCount = len(self.traces)        
-        self.__CalculateTraceEventDurations()
-    
-    def __CalculateTraceEventDurations(self):
-        # Calculate activity durations properly
-        resList = {r:[] for r in self.R}
-        traceDict = {trace.case: trace for trace in self.traces}
-        for trace in self.traces:
-            cid = trace.case
-            
-            for event in trace.future:
-                act = event[0]
-                res = event[1]
-                ts  = event[2]
-                
-                resList[res].append((act, ts, cid))
-        
-        resList = {r: sorted(resList[r], key=lambda x: x[1]) for r in self.R} # Order by TS
-        for r in self.R:
-            for i in range(len(resList[r])):
-                (act, ts, cid) = resList[r][i]
-                trace = traceDict[cid]
-                
-                if i > 0:
-                    resBasedDuration = ts - resList[r][i-1][1] # Time between previous and current event on resource r
-                else:
-                    resBasedDuration = 1
-                
-                for j in range(len(trace.future)):
-                    fAct = trace.future[j][0]
-                    fRes = trace.future[j][1]
-                    fTs  = trace.future[j][2]
-                    
-                    if j > 0:
-                        traceBasedDuration = fTs - trace.future[j-1][2] # Time between previous and current event in the trace
-                    else:
-                        traceBasedDuration = 1
-                    
-                    # Find the matching event
-                    if fAct == act and fRes == r and fTs == ts:
-                        trace.durations[j] = int(min(resBasedDuration, traceBasedDuration))
+        self.traceCount = len(self.traces)
     
     def __GetNewlyBeginningTraces(self, windowLower, windowUpper):
         activeTracesList = [x for x in self.traces if x.NextEventInWindow(windowLower, windowUpper)]
@@ -196,6 +156,7 @@ class Simulator:
         ret = None
         cb = self.callbacks.get(callback)
         if cb is not None:
+            print(str(callback))
             fTimeStart = time.time()
             ret = cb(*parameters)
             self.__vPrint(f"    - {str(callback)} took: {time.time() - fTimeStart}s")
@@ -251,6 +212,9 @@ class Simulator:
         self.callbacks[callbackType] = callback
          
     def Run(self):
+        # In case a duration calculation for the activity duration is registered: Call it!
+        self.__Call(Callbacks.CALC_EventDurations, (self.R, self.traces))
+        
         currentWindow = -1
         currentWindowLower = self.P_Windows[0][0]
         currentWindowUpper = self.P_Windows[0][1]
