@@ -5,6 +5,8 @@ import itertools
 from datetime import datetime, timezone
 import pandas as pd
 import os
+import numpy as np
+import matplotlib.pyplot as plt
 
 def GetIntTs(datetime_ts):
     # From extractor / Bianka
@@ -75,7 +77,25 @@ def GetActivityResourceMapping(log):
         'Relative-Time': [actResTime[a][r] / sumTime for a in A for r in sortedAtoR[a]],
     })    
     return df1, df2                
-                
+
+
+
+def GetValue(df, r, a, col):
+    val = df.loc[(df.Resource == r) & (df.Activity == a)][col]
+    if len(val) == 0:
+        return 0
+    else:    
+        return val.values[0]
+    
+def test(df1, df2):
+    A = sorted(list(set(df2['Activity'])))
+    R = sorted(list(set(df2['Resource'])))
+            
+    df = pd.DataFrame([[r] + [GetValue(df2, r, a, 'Relative-Time') for a in A] for r in R], columns=['Resource'] + A)
+         
+    # plot data in stack manner of bar type
+    df.plot(x='Resource', kind='bar', stacked=True,title='Stacked Bar Graph by dataframe')
+    plt.show()
     
 def main(original, processed):
     origLog = pm4py.read_xes(original)
@@ -86,6 +106,9 @@ def main(original, processed):
         df2.to_excel(writer, sheet_name='Original_TIME')
         del origLog
         
+        
+        test(df1, df2)
+        exit(1)
         simData = {'Resource': df1['Resource'], 'ORIG-TIME' : df1['Relative-Time'], 'ORIG-WORK' : df1['Relative-Activities']}
         
         for log in processed:
