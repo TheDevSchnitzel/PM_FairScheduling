@@ -21,7 +21,7 @@ def FairnessBacklogFair_TIME(simulatorState, BACKLOG_N = 5):
             
     for trace in completedTraces + activeTraces:
         for data in trace.history:
-            if minTS <= data[0] or data[1] <= maxTS:                    
+            if (minTS <= data[0] <= maxTS) or (minTS <= data[1] <= maxTS):              
                 start = data[0]
                 if data[0] < minTS:
                     start = minTS

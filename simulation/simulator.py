@@ -9,7 +9,6 @@ import pandas as pd
 import math
 
 class Simulator:
-    
     def __init__(self, event_dict, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
         self.P_Events = event_dict
         self.P_EventsPerWindowDict = eventsPerWindowDict
@@ -156,7 +155,6 @@ class Simulator:
         ret = None
         cb = self.callbacks.get(callback)
         if cb is not None:
-            print(str(callback))
             fTimeStart = time.time()
             ret = cb(*parameters)
             self.__vPrint(f"    - {str(callback)} took: {time.time() - fTimeStart}s")
