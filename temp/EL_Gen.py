@@ -14,7 +14,8 @@ def ExportSimulationLog(log, logPath):
     colTS = []
     
     for trace in log:
-        for act, res, ts, case in trace:
+        print(trace)
+        for (act, res, ts, case) in trace:
             colCase.append(case)
             colAct.append(act)
             colRes.append(res)
@@ -40,6 +41,51 @@ def GenerateEL(traces, variants, actRes, timings, startDate, logPath):
         log.append(list(zip(variant, res, ts, [i]*len(ts))))
     
     ExportSimulationLog(log, logPath)
+  
+  
+  
+def Congestion():
+    startDateInt = datetime.strptime('2019-11-23 14:51:37', '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    startDateInt = (startDateInt - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds()
+    t = startDateInt
+    
+    actTraces = []
+    log = []
+    
+    v1 = ('Start', 'A', 'End')
+    v2 = ('Start', 'B', 'End')
+    
+    for i in range(1000):
+        actTraces.append([('Start', 'System', t, i*2), ('B', 'R1', t + 900,i*2)])
+        actTraces.append([('Start', 'System', t + 300, (i*2)+1)])
+        t += 600
+        
+    sysBusy = 0
+    rBusy   = 0
+    
+    random.shuffle(actTraces)
+    
+    while len(actTraces) > 0:        
+        if sysBusy > 0:
+            sysBusy -= 1
+        if rBusy > 0:
+            rBusy -= 1
+            
+        trace = actTraces.pop()
+        
+        if trace[-1][1] == 'R1' and sysBusy == 0:
+            trace.append(('End', 'System', t, trace[-1][3]))
+            log.append(trace)
+            sysBusy = 300
+        elif trace[-1][0] == 'Start' and rBusy == 0:
+            trace.append(('A', 'R1', t, trace[-1][3]))
+            actTraces.append(trace)
+            rBusy = 300
+        else:
+            actTraces.append(trace)
+        t += 1
+    
+    ExportSimulationLog(log, 'congested.xes')
     
 def main():
     # Unfair - CFG
@@ -96,4 +142,5 @@ def main():
     GenerateEL(10000, variants, actRes, timings, startDate, '../logs/gen_Unfair2.xes')
 
 if __name__ == '__main__':
-    main()
+    Congestion()
+    #main()
