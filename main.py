@@ -71,9 +71,7 @@ def SimulatorFairness_Callback(simulatorState):
     
 
 def SimulatorCongestion_Callback(simulatorState):
-    #segmentFreq, segmentTime, waitingTraces = Congestion.GetActiveSegments(activeTraces, simTime, SIM_Modes.KNOWN_FUTURE)
-    
-    # return Congestion.GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces)
+    return Congestion.GetProgressByWaitingTimeInFrontOfActivity(simulatorState)
     #return Congestion.GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces)
     return {}
 
@@ -112,8 +110,8 @@ def main():
     # Simulation -> Callback at the beginning / end of each window
     sim = Simulator(event_dict, eventsPerWindowDict, bucketId_borders_dict, 
                     simulationMode      = SIM_Modes.KNOWN_FUTURE,
-                    optimizationMode    = OptimizationModes.FAIRNESS, 
-                    #optimizationMode    = OptimizationModes.CONGESTION, 
+                    #optimizationMode    = OptimizationModes.FAIRNESS, 
+                    optimizationMode    = OptimizationModes.CONGESTION, 
                     schedulingBehaviour = SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW,
                     #schedulingBehaviour = SchedulingBehaviour.KEEP_ASSIGNMENTS,
                     endTimestampAttribute='ts', verbose=args.verbose)
@@ -123,7 +121,7 @@ def main():
     
     sim.Register(SIM_Callbacks.WND_START_SCHEDULING, SimulatorWindowStartScheduling_Callback)
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
-    #sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
+    sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Register(SIM_Callbacks.CALC_EventDurations, lambda x,y: EventDurationsByMinPossibleTime(x,y))
     sim.Run()
     sim.ExportSimulationLog(args.out)

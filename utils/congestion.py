@@ -25,16 +25,37 @@ def GetActiveSegments(activeTraces, simTime, simMode):
                 
                 # Time spent in this segment
                 segmentTime[(lastAct, nextAct)] = simTime - lastTs
-    print(segmentFreq)
     return segmentFreq, segmentTime, waitingTraces
 
-def GetProgressByWaitingTimeInFrontOfActivity(A, segmentTime, waitingTraces):
+def GetProgressByWaitingTimeInFrontOfActivity(simulatorState):
+    currentWindow   = simulatorState['CurrentWindow']
+    windows         = simulatorState['Windows']
+    verbose         = simulatorState['Verbose']
+    A               = simulatorState['A']
+    lonelyResources = simulatorState['LonelyResources']
+    completedTraces = simulatorState['CompletedTraces']
+    activeTraces    = simulatorState['ActiveTraces']
+    simTime         = simulatorState['CurrentTimestep']
+    simMode         = simulatorState['SimulationMode']
+    segmentFreq, segmentTime, waitingTraces = GetActiveSegments(activeTraces, simTime, simMode)    
+    
     ret = {a: 1 for a in A}
     for (_, a), t in segmentTime.items():
         ret[a] += t / waitingTraces
     return ret
     
-def GetProgressByWaitingNumberInFrontOfActivity(A, segmentFreq, waitingTraces):
+def GetProgressByWaitingNumberInFrontOfActivity(simulatorState):
+    currentWindow   = simulatorState['CurrentWindow']
+    windows         = simulatorState['Windows']
+    verbose         = simulatorState['Verbose']
+    A               = simulatorState['A']
+    lonelyResources = simulatorState['LonelyResources']
+    completedTraces = simulatorState['CompletedTraces']
+    activeTraces    = simulatorState['ActiveTraces']
+    simTime         = simulatorState['CurrentTimestep']
+    simMode         = simulatorState['SimulationMode']
+    segmentFreq, segmentTime, waitingTraces = GetActiveSegments(activeTraces, simTime, simMode)
+    
     ret = {a: 1 for a in A}
     for (_, a), n in segmentFreq.items():
         ret[a] += n / waitingTraces
