@@ -31,7 +31,7 @@ def GetProgressByWaitingTimeInFrontOfActivity(simulatorState):
     currentWindow   = simulatorState['CurrentWindow']
     windows         = simulatorState['Windows']
     verbose         = simulatorState['Verbose']
-    A               = simulatorState['A']
+    A               = simulatorState['A'] + [None]
     lonelyResources = simulatorState['LonelyResources']
     completedTraces = simulatorState['CompletedTraces']
     activeTraces    = simulatorState['ActiveTraces']
@@ -39,16 +39,16 @@ def GetProgressByWaitingTimeInFrontOfActivity(simulatorState):
     simMode         = simulatorState['SimulationMode']
     segmentFreq, segmentTime, waitingTraces = GetActiveSegments(activeTraces, simTime, simMode)    
     
-    ret = {a: 1 for a in A}
-    for (_, a), t in segmentTime.items():
-        ret[a] += t / waitingTraces
+    ret = {(a,b): 0 for a in A for b in A}
+    for (a, b), t in segmentFreq.items():
+        ret[(a,b)] += t / waitingTraces
     return ret
     
 def GetProgressByWaitingNumberInFrontOfActivity(simulatorState):
     currentWindow   = simulatorState['CurrentWindow']
     windows         = simulatorState['Windows']
     verbose         = simulatorState['Verbose']
-    A               = simulatorState['A']
+    A               = simulatorState['A'] + [None]
     lonelyResources = simulatorState['LonelyResources']
     completedTraces = simulatorState['CompletedTraces']
     activeTraces    = simulatorState['ActiveTraces']
@@ -56,9 +56,9 @@ def GetProgressByWaitingNumberInFrontOfActivity(simulatorState):
     simMode         = simulatorState['SimulationMode']
     segmentFreq, segmentTime, waitingTraces = GetActiveSegments(activeTraces, simTime, simMode)
     
-    ret = {a: 1 for a in A}
-    for (_, a), n in segmentFreq.items():
-        ret[a] += n / waitingTraces
+    ret = {(a,b): 0 for a in A for b in A}
+    for (a, b), n in segmentFreq.items():
+        ret[(a,b)] += n / waitingTraces
     return ret
     
 def GetCategorizedTraces(activeTraces, currentWindowLower, currentWindowUpper, simTime):

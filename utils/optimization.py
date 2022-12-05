@@ -65,8 +65,12 @@ def OptimizeActiveTraces(simulatorState, availableResources, fRatio, cRatio):
                     if optimizationMode == OptimizationModes.FAIRNESS and fRatio[r] > 0:
                         # Multiply the weights by a large constant factor and round => Doc says floating points can cause issues: https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.flow.max_flow_min_cost.html#networkx.algorithms.flow.max_flow_min_cost
                         G.add_edge('c' + trace.case, r, weight = -int(100000 * fRatio[r]), capacity = int(nextActivityDuration) + 1)
-                    elif optimizationMode == OptimizationModes.CONGESTION and cRatio[nextActivity] > 0:
-                        G.add_edge('c' + trace.case, r, weight = -int(100000 * cRatio[nextActivity]), capacity = int(nextActivityDuration) + 1)
+                    elif optimizationMode == OptimizationModes.CONGESTION:
+                        s = (None, nextActivity)
+                        if len(trace.history) > 0:
+                            s = (trace.history[-1][3][0], nextActivity)
+                        if cRatio[s] > 0:
+                            G.add_edge('c' + trace.case, r, weight = -int(100000 * cRatio[s]), capacity = int(nextActivityDuration) + 1)
                     elif optimizationMode == OptimizationModes.BOTH:
                         # ??? Normalizing, Scaling and weighting cRatio and fRatio ????
                         continue
