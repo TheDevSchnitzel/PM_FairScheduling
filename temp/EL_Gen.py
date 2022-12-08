@@ -56,7 +56,7 @@ def Congestion():
     v2 = ('Start', 'B', 'End')
     
     for i in range(1000):
-        actTraces.append([('Start', 'System', t, i*2), ('B', 'R1', t + 900,i*2)])
+        actTraces.append([('Start', 'System', t, i*2), ('B', 'R1', t + 900,i*2)]) # Send arriving cases to B immediately to clog up (Start,A)
         actTraces.append([('Start', 'System', t + 300, (i*2)+1)])
         t += 600
         

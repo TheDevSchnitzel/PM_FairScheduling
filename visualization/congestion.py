@@ -7,7 +7,7 @@ from utils.extractor import ts_to_int as GetIntTs
 from utils.EL_Helper import GetSegments, GetActivities, GetWindows
 
 
-
+from time import time
 
 def GetWindowIndex(windows, time):
     low  = windows[0][0]
@@ -86,6 +86,9 @@ def GetActiveSegments(log):
     
     
 def PlotComparisonLineChart(a, b, ax, xTicks=False, yTicks=False, legend=False):
+    if (a.max() - a.min()) == 0 or (b.max() - b.min()) == 0:
+        return
+    
     d1 = (a - a.min()) / (a.max() - a.min())
     d2 = (b - b.min()) / (b.max() - b.min())
     
@@ -125,14 +128,20 @@ def PlotComparisonLineChart(a, b, ax, xTicks=False, yTicks=False, legend=False):
     if legend:
         ax.legend(['ORG', 'SIM'], loc="upper right")
         
-def Show(original, processed):
+def tMes(cb, title):
+    t = time()
+    ret = cb()
+    print(f'{title}: {time()-t}s')
+    return ret
+
+def Show(original, processed, figsize=(50,25)):
     origLog = pm4py.read_xes(original)
     proc = pm4py.read_xes(processed)
         
     A = GetActivities(origLog)
     
-    segOrig = GetActiveSegments(origLog)
-    segLog  = GetActiveSegments(proc)
+    segOrig = tMes(lambda: GetActiveSegments(origLog), 'ActSeqOrig')
+    segLog  = tMes(lambda: GetActiveSegments(proc), 'ActSeqProc')
 
     # Detect empty rows / Columns
     Acol = list(A)
@@ -152,13 +161,15 @@ def Show(original, processed):
     
     # Create figure
     fig, axes = plt.subplots(len(Arow), len(Acol), sharex=True, sharey=True)
-    
+    fig.set_size_inches(*figsize)
+
     # Matrix labels    
     #cols = ['Start', 'A', 'B', 'End']     rows = ['Start', 'A', 'B', 'End']
+    t = lambda x: ' '.join([s[0:5] + '.' if len(s) > 6 else s for s in str(x).strip().split(' ')])
     for ax, col in zip(axes[0], Acol):
-        ax.set_title(col)
+        ax.set_title(t(col), rotation=90)
     for ax, row in zip(axes[:,0], Arow):
-        ax.set_ylabel(row, rotation=0, size='large')
+        ax.set_ylabel(t(row), rotation=0, labelpad=10, loc='center')
     
     for i in range(len(Arow)):
         for j in range(len(Acol)):
@@ -181,7 +192,10 @@ if __name__ == '__main__':
     #main('../logs/log_ResReduced.xes', [os.path.join('../logs', f) for f in os.listdir('../logs') if os.path.isfile(os.path.join('../logs', f)) and f not in ['log_ResReduced.xes', 'log.xes']])
     #main('../logs/log_ResReduced.xes', [os.path.join('../logs', f) for f in os.listdir('../logs') if f.startswith('F') and os.path.isfile(os.path.join('../logs', f)) and f not in ['log_ResReduced.xes', 'log.xes']])
     #main('logs/1_congested.xes', 'tmp.xes')
-    Show('logs/log_ResReduced.xes', 'bTemp.xes')
+    
+    #Show('logs/log_ResReduced.xes', 'bTemp.xes')
+    Show('C:/Users/Alexa/Downloads/BPI_Challenge_2017.xes', 'C:/Users/Alexa/Downloads/BPI_Challenge_2017_CONGESTION.xes', (150, 75))
+    
         #  ['../logs/simulated_fairness_log_EQUAL_WORK_ALWAYS.xes',
         #   '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500.xes',
         #   '../logs/simulated_fairness_log_EQUAL_WORK_BACKLOG_500_CONSTANTLY_RESSCHEDULED.xes'])
