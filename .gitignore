@@ -2,7 +2,7 @@
 logs/
 *.xlsx
 *.xes
-
+*.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
