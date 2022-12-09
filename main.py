@@ -16,17 +16,24 @@ import time
 import multiprocessing
 from multiprocessing import Pool
 from utils.activityDuration import EventDurationsByMinPossibleTime
+from predictor.predictor import PredictorService
 
 G_KnownActivityDurations = {}
 scriptArgs = None
-simulator = None
+simulator  = None
+predictor  = None
 
 def handler(signum, frame):
     global simulator
     global scriptArgs
+    global predictor
+
     if simulator is not None:
         simulator.HandleSimulationAbort()
         simulator.ExportSimulationLog(scriptArgs.out, exportSimulatorStartEndTimestamp=False)
+    
+    if predictor is not None:
+        predictor.StopService()
     exit(1)    
 signal.signal(signal.SIGINT, handler)
 
@@ -42,16 +49,22 @@ def argsParse(cmdParameterLine = None):
     #parser.add_argument('--precision', default=0.0, type=float)
     
     # Fairness parameters
-    parser.add_argument('-F', '--Fair', default='W', type=str, help="W: Amount of work / T: Time spent working")
+    parser.add_argument('-F', '--Fair', default='W',choices=['W','T'], type=str, help="W: Amount of work / T: Time spent working")
     parser.add_argument('--FairnessBacklogN', default=50, type=int, help="Number of passed windows to consider for fairness calculations")
     
     # Congestion parameters
-    parser.add_argument('-C', '--Congestion', default='N', type=str, help="N: Number of cases in segment / T: Time spent in segment")
+    parser.add_argument('-C', '--Congestion', default='N',choices=['N','T'], type=str, help="N: Number of cases in segment / T: Time spent in segment")
     parser.add_argument('--CongestionBacklogN', default=50, type=int, help="Number of passed windows to consider for calculations")
     
     # Multi-Simulation mode
     parser.add_argument('-M', '--MultiSimulation', default=None, type=str, help="Path to config file for running multiple simulations in parallel, containing commandline parameters with each line being one experiment")
+    parser.add_argument('--MultiSimCores', default=int(multiprocessing.cpu_count() / 2), type=int, help="Amount of cores/processes to use for computation - Python can behave weird if the number is close to the amount of available logical cores")
 
+    # Predictor parameters
+    parser.add_argument('--PredictorPort', default=5050, type=int, help="Port of the server handling predictions")
+    parser.add_argument('--PredictorHost', default=None, type=str, help="IP address of the server host handling predictions")
+    parser.add_argument('--PredictorModelPath', default=None, type=str, help="Pretrained .h5 TF model used for predictions")
+    
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Display additional runtime information")
     
     
@@ -133,14 +146,24 @@ def Run(args):
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
     sim.Register(SIM_Callbacks.CALC_EventDurations, lambda x,y: EventDurationsByMinPossibleTime(x,y))
+
+    sim.Register(SIM_Callbacks.PREDICT_NEXT_ACT, )
+    sim.Register(SIM_Callbacks.PREDICT_ACT_DUR, )
+
     sim.Run()
     sim.ExportSimulationLog(args.out)
     #sim.ExportSimulationLog('logs/simulated_congestion_log_WAITING_TRACE_COUNT.xes')
 
 
 def main():
+    global predictor
     args = argsParse()
 
+    # Is there a remote prediction service? -> If not set up a local one
+    if args.PredictorHost is None and args.PredictorModelPath is not None:
+        predictor = PredictorService(None, args.PredictorPort, args.PredictorModelPath)
+    
+    # Do we run a single simulation or multiple in parallel?
     if args.MultiSimulation is None:
         Run(args)
     else:
@@ -151,7 +174,7 @@ def main():
                 if cmd != "":
                     argList.append(cmd)
 
-        with Pool(max(1, int(multiprocessing.cpu_count() / 2))) as p:
+        with Pool(max(1, args.MultiSimCores)) as p:
             p.map(Run, argList)
     
 

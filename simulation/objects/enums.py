@@ -6,6 +6,8 @@ class Callbacks(Enum):
     CALC_Fairness        = 2
     CALC_Congestion      = 4
     CALC_EventDurations  = 8
+    PREDICT_NEXT_ACT     = 16
+    PREDICT_ACT_DUR      = 32
     
 class TimestampModes(Enum):
     START   = 0

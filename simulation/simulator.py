@@ -7,10 +7,10 @@ from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 from pm4py.objects.conversion.log import converter as log_converter
 import pandas as pd
 import math
+from .objects.traceExtractor import ExtractTraces, ExtractActivityResourceMapping
 
 class Simulator:
-    def __init__(self, event_dict, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
-        self.P_Events = event_dict
+    def __init__(self, log, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
         self.P_EventsPerWindowDict = eventsPerWindowDict
         self.P_Windows = windows
         self.P_WindowCount = len(windows)
@@ -18,11 +18,7 @@ class Simulator:
         self.P_SimulationMode = simulationMode
         self.P_OptimizationMode = optimizationMode
         self.P_SchedulingBehaviour = schedulingBehaviour
-        
-        self.P_AtoR, self.P_RtoA = self.__GetAttributeResourceMapping()        
-        self.R = [r for r in self.P_RtoA.keys()]
-        self.A = [a for a in self.P_AtoR.keys()]
-        
+                
         self.completedTraces = list()
         self.callbacks = { x: None for x in Callbacks }
         
@@ -46,7 +42,11 @@ class Simulator:
             self.TimestampAttribute = endTimestampAttribute
         
         # Build trace objects from the event data
-        self.__GenerateTraces()
+        self.traces = ExtractTraces(log, self.TimestampMode, self.TimestampAttribute)        
+        self.traceCount = len(self.traces)
+        
+        # Extract information about activities and resources
+        self.P_AtoR, self.P_RtoA, self.A, self.R = ExtractActivityResourceMapping(self.traces)
         
         # Get resources that only perform activities that no other resource can perform
         self.LonelyResources = self.__GetLonelyResources()
@@ -89,24 +89,6 @@ class Simulator:
             'CompletedTraces': self.completedTraces,
             'ActiveTraces':    self.activeTraces
         }
-    
-    def __GetAttributeResourceMapping(self):
-        """ Get the mapping between Resources and Activities in order """
-        AtoR = {}
-        RtoA = {}
-        
-        for _, e in self.P_Events.items():
-            if e['act'] not in AtoR:
-                AtoR[e['act']] = []                
-            if e['res'] not in RtoA:
-                RtoA[e['res']] = []
-            
-            if e['res'] not in AtoR[e['act']]:
-                AtoR[e['act']].append(e['res'])            
-            if e['act'] not in RtoA[e['res']]:
-                RtoA[e['res']].append(e['act'])
-        
-        return {a: sorted(AtoR[a]) for a in AtoR}, {r: sorted(RtoA[r]) for r in RtoA}
         
     def __GetLonelyResources(self):
         """Lonely resources are carrying out activities without any other resource taking part in the same activity
@@ -122,24 +104,6 @@ class Simulator:
                 
         return sorted([r for r in res if len(list(set(res[r]))) == 0])
         
-    def __GenerateTraces(self):
-        eventTraces = {cid:[] for cid in set([e['cid'] for _, e in self.P_Events.items()])}
-        
-        # Build the event traces
-        for _, e in self.P_Events.items():
-            eventTraces[e['cid']].append(e)            
-        
-        # Sort events in traces by timestamp
-        for cid in eventTraces.keys():
-            if self.TimestampMode == TimestampModes.START or self.TimestampMode == TimestampModes.END:
-                eventTraces[cid].sort(key=lambda e: e[self.TimestampAttribute])
-                self.traces.append(Trace(str(cid), [(e['act'], e['res'], e[self.TimestampAttribute]) for e in eventTraces[cid]]))
-            else:
-                eventTraces[cid].sort(key=lambda e: e[self.TimestampAttribute[0]])
-                self.traces.append(Trace(str(cid), [(e['act'], e['res'], e[self.TimestampAttribute[0]], e[self.TimestampAttribute[1]]) for e in eventTraces[cid]]))
-        
-        self.traceCount = len(self.traces)
-    
     def __GetNewlyBeginningTraces(self, windowLower, windowUpper):
         activeTracesList = [x for x in self.traces if x.NextEventInWindow(windowLower, windowUpper)]
         

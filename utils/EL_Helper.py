@@ -29,7 +29,7 @@ def GetActivities(log):
             event = trace[i]
             if event['concept:name'] not in activities:
                 activities.append(event['concept:name'])
-    return ['None'] + activities
+    return sorted(['None'] + activities)
 
 
 def GetWindows(log, wndNumberCallback = None):

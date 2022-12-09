@@ -92,7 +92,7 @@ def PlotComparisonLineChart(a, b, ax, xTicks=False, yTicks=False, legend=False):
     d1 = (a - a.min()) / (a.max() - a.min())
     d2 = (b - b.min()) / (b.max() - b.min())
     
-    ax.plot([i for i in range(len(d1))], d1, 'g')
+    ax.plot([i for i in range(len(d1))], d1, 'grey')
     ax.plot([i for i in range(len(d2))], d2, 'b')
         
     if not xTicks:
@@ -139,6 +139,9 @@ def Show(original, processed, figsize=(50,25)):
     proc = pm4py.read_xes(processed)
         
     A = GetActivities(origLog)
+    if not A == GetActivities(proc):
+        print('The selected logs do not contain the same activities! Is this the correct log combination?')
+        exit(1)
     
     segOrig = tMes(lambda: GetActiveSegments(origLog), 'ActSeqOrig')
     segLog  = tMes(lambda: GetActiveSegments(proc), 'ActSeqProc')
