@@ -1,27 +1,25 @@
-from concurrent import futures
-import sys
-import os
-from pathlib import Path
-import time
+import pickle
+from .enums import SimulationModes, TimestampModes
 
-import numpy as np
-import math
-
-from .enums import Callbacks,TimestampModes,SimulationModes
 
 class Trace:
-    def __init__(self, case, events):
+    def __init__(self, case, events, callback_PREDICT_NEXT_ACT, callback_PREDICT_ACT_DUR):
         self.case = case     
         self.history = []      # [(start_ts, end_ts, res, (a,r,ts)) ...]
         
-        self.future   = events # [(a,r,ts) or (a,r,ts_start, ts_end)...]
+        self.future = events # [(a,r,ts)...]
         
         # Duration of the events in 'future' (in order)
         self.durations = [1 for _ in range(len(events))]     
         
+        # Lifecycle status of the events in 'future' (in order)
+        self.lifecycle = []
+                
         self.currentAct = None # (start_ts, exec.res, (a,r,ts))
-        self.waiting = True # Not yet started, first event has still to come
-        
+        self.waiting    = True # Not yet started, first event has still to come
+
+        self.PREDICT_NEXT_ACT = callback_PREDICT_NEXT_ACT
+        self.PREDICT_ACT_DUR  = callback_PREDICT_ACT_DUR
         
     def IsWaiting(self) -> bool:
         return self.waiting
@@ -39,7 +37,11 @@ class Trace:
         if simMode == SimulationModes.KNOWN_FUTURE:
             return self.future[0][0]
         elif simMode == SimulationModes.PREDICTED_FUTURE:
-            raise Exception("TODO: Implement!")
+            # Request the next_activity prediction, if future has a value this has already been done, do not do it again
+            if len(self.future) == 0:
+                self.future.append((self.PREDICT_NEXT_ACT(self), None, None)) # (a,r,ts)
+            
+            return self.future[0][0]
         else:
             raise Exception("Unknown mode for simulation!")
     
@@ -47,13 +49,18 @@ class Trace:
         if simMode == SimulationModes.KNOWN_FUTURE:
             return self.future[0]
         elif simMode == SimulationModes.PREDICTED_FUTURE:
-            raise Exception("TODO: Implement!")
+            if len(self.future) == 0:
+                self.future.append((self.PREDICT_NEXT_ACT(self), None, None)) # (a,r,ts)
+            
+            return self.future[0]
         else:
             raise Exception("Unknown mode for simulation!")
         
-    def GetRemainingActivityTime(self, mode: TimestampModes,  time: int) -> int:    
+    def GetRemainingActivityTime(self, mode: TimestampModes,  time: int, simMode: SimulationModes) -> int:
         if self.currentAct is None:
             return 0
+        elif len(self.durations) == 0 and simMode == SimulationModes.PREDICTED_FUTURE:
+            self.durations.append(self.PREDICT_ACT_DUR(self.PREDICT_ACT_DUR(self, 'current')))    
         # elif len(self.currentAct[2]) == 3:
         #     if mode == TimestampModes.END:
         #         if len(self.history) == 0:
@@ -88,22 +95,16 @@ class Trace:
                     return self.durations[1]
                 else:
                     raise Exception("Illegal state!")
-            # if timeMode == TimestampModes.BOTH:
-            #     return self.future[0][3] - self.future[0][2]
-            # elif timeMode == TimestampModes.START:
-            #     if len(self.future) >= 2:
-            #         t = self.future[1][3][2]
-            #     else:
-            #         return 0 # No information available
-            #     return t - self.future[0][2]
-            # elif timeMode == TimestampModes.END:
-            #     if self.currentAct is not None:
-            #         t = self.currentAct[2][2]
-            #     elif len(self.history) > 0:
-            #         t = self.history[-1][3][2]
-            #     else:
-            #         return 0 # No information available
-            #     return self.future[0][2] - t
+        elif simMode == SimulationModes.PREDICTED_FUTURE:
+            # Request the next_activity_duration prediction, if durations has a value this has already been done, do not do it again
+            if self.IsWaiting():
+                if len(self.durations) == 0:
+                    self.durations.append(self.PREDICT_ACT_DUR(self, 'current'))
+                return self.durations[0]
+            elif self.HasRunningActivity():
+                if len(self.durations) == 1:
+                    self.durations.append(self.PREDICT_ACT_DUR(self))
+                return self.durations[1]
         else:
             return 0
     
@@ -112,9 +113,13 @@ class Trace:
         if self.currentAct is None:
             raise Exception("Illegal state!")
         
-        # Build (start_ts, end_ts, res, (a,r,ts) ... or (a,r,start_ts, end_ts))
+        # Build (start_ts, end_ts, res, (a,r,ts))
         self.history.append((self.currentAct[0], time, self.currentAct[1], self.currentAct[2]))
         del self.durations[0]
+        
+        if len(self.lifecycle) > 0:
+            del self.lifecycle[0]
+            
         self.currentAct = None
 
         # Determine waiting status

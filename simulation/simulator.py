@@ -8,9 +8,10 @@ from pm4py.objects.conversion.log import converter as log_converter
 import pandas as pd
 import math
 from .objects.traceExtractor import ExtractTraces, ExtractActivityResourceMapping
+import pickle
 
 class Simulator:
-    def __init__(self, log, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, startTimestampAttribute=None, endTimestampAttribute=None, verbose=False):
+    def __init__(self, log, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, timestampMode = TimestampModes.END, timestampAttribute=None, lifecycleAttribute=None, verbose=False):
         self.P_EventsPerWindowDict = eventsPerWindowDict
         self.P_Windows = windows
         self.P_WindowCount = len(windows)
@@ -26,23 +27,17 @@ class Simulator:
         self.traceCount = 0        
         self.traces = []
         self.activeTraces = []
+        self.LifecycleAttribute = lifecycleAttribute
 
         
         # Determine what type of timestamps are available for the simulation
-        if startTimestampAttribute is None and endTimestampAttribute is None:
-            raise Exception("At least one of the parameters 'startTimestampAttribute' and 'endTimestampAttribute' needs to be set!")
-        elif startTimestampAttribute is not None and endTimestampAttribute is not None:
-            self.TimestampMode = TimestampModes.BOTH
-            self.TimestampAttribute = (startTimestampAttribute, endTimestampAttribute)
-        elif startTimestampAttribute is not None:
-            self.TimestampMode = TimestampModes.START
-            self.TimestampAttribute = startTimestampAttribute
-        elif endTimestampAttribute is not None:
-            self.TimestampMode = TimestampModes.END
-            self.TimestampAttribute = endTimestampAttribute
+        self.TimestampMode = timestampMode
+        self.TimestampAttribute = timestampAttribute
+        if timestampAttribute is None:
+            raise Exception("The parameter 'TimestampAttribute' needs to be set!")
         
         # Build trace objects from the event data
-        self.traces = ExtractTraces(log, self.TimestampMode, self.TimestampAttribute)        
+        self.traces = ExtractTraces(log, self.TimestampAttribute, self.LifecycleAttribute, self.callbacks.get(Callbacks.PREDICT_NEXT_ACT), self.callbacks.get(Callbacks.PREDICT_ACT_DUR))
         self.traceCount = len(self.traces)
         
         # Extract information about activities and resources
@@ -137,7 +132,7 @@ class Simulator:
         schedulingReadyResources = {r: currentWindowDuration for r in self.R}
         for trace in self.activeTraces:
             if trace.HasRunningActivity():
-                remTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep) 
+                remTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep, self.P_SimulationMode) 
                 if remTime < currentWindowDuration:
                     schedulingReadyResources[trace.currentAct[1]] = currentWindowDuration - remTime
         
@@ -174,6 +169,10 @@ class Simulator:
         self.callbacks[callbackType] = callback
          
     def Run(self):
+        # Check for correct specification of callbacks
+        if self.P_SimulationMode == SimulationModes.PREDICTED_FUTURE and (self.callbacks.get(Callbacks.PREDICT_NEXT_ACT) is None or self.callbacks.get(Callbacks.PREDICT_ACT_DUR) is None):
+            raise Exception("For simulation mode 'PREDICTED_FUTURE' the callbacks 'PREDICT_NEXT_ACT' and 'PREDICT_ACT_DUR' need to be specified!")
+
         # In case a duration calculation for the activity duration is registered: Call it!
         self.__Call(Callbacks.CALC_EventDurations, (self.R, self.traces))
         
@@ -234,7 +233,7 @@ class Simulator:
             # First stop all activities ending in this timestep
             for trace in self.activeTraces:
                 if trace.HasRunningActivity():
-                    remainingTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep)
+                    remainingTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep, self.P_SimulationMode)
                     if remainingTime <= 0:
                         trace.EndCurrentActivity(self.SimulatedTimestep)
                             
@@ -266,7 +265,7 @@ class Simulator:
                             del schedule[trace.case]
                             
                             # Again try to determine whether we can skip unimportant timesteps for the simulation
-                            remainingTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep)
+                            remainingTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep, self.P_SimulationMode)
                             if remainingTime < minRemainingTime:
                                 minRemainingTime = remainingTime
                                 

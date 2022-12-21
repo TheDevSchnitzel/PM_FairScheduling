@@ -1,6 +1,6 @@
 import threading
 
-class PyThread (threading.Thread):
+class PyThread(threading.Thread):
     def __init__(self, threadID, f, param, name):
         threading.Thread.__init__(self)
         self.threadID = threadID

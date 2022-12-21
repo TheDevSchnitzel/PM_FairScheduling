@@ -17,17 +17,20 @@ class TracePredictionData:
         self.NextActivity = nextActivity
         self.CurrentActivityDuration = currentActivityDuration
 
-def PrepareEventlogForActivityPrediction(path, timestampMode, timestampAttribute):
-    traces = ExtractTraces(path, timestampMode, timestampAttribute)
+def PrepareEventlogForActivityPrediction(path, timestampAttribute):
+    traces = ExtractTraces(path, timestampAttribute, None, None, None)
     AtoR, RtoA, A, R = ExtractActivityResourceMapping(traces)
     oneHotMap_A, oneHotMap_R = CreateOneHotEncoding(A,R)
     EventDurationsByMinPossibleTime(R, traces)
 
-    return list(chain.from_iterable([PrepareTraceForActivityPrediction(trace, oneHotMap_A, oneHotMap_R) for trace in traces])), oneHotMap_A, oneHotMap_R
+    return list(chain.from_iterable([PrepareTraceForActivityPrediction(trace, oneHotMap_A, oneHotMap_R) for trace in traces])), A, R
 
 def CreateOneHotEncoding(A, R):
     oneHot_A = {a: np.zeros(len(A)) for a in A}
     oneHot_R = {r: np.zeros(len(R)) for r in R}
+
+    A.sort()
+    R.sort()
 
     for i in range(0, len(A)):
         oneHot_A[A[i]][i] = 1

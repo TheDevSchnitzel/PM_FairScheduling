@@ -1,32 +1,43 @@
 import argparse
-import pm4py
-import utils.extractor as extractor
-import utils.frames as frames
-import math
-from simulation.simulator import Simulator
-from simulation.objects.enums import Callbacks as SIM_Callbacks
-from simulation.objects.enums import SimulationModes as SIM_Modes
-from simulation.objects.enums import TimestampModes, OptimizationModes, SchedulingBehaviour
-import utils.fairness as Fairness
-import utils.congestion as Congestion
-import utils.optimization as Optimization
 import json
+import math
+import multiprocessing
 import signal
 import time
-import multiprocessing
 from multiprocessing import Pool
-from utils.activityDuration import EventDurationsByMinPossibleTime
+import uuid
+import threading
+
+import pm4py
+
+import utils.congestion as Congestion
+import utils.extractor as extractor
+import utils.fairness as Fairness
+import utils.frames as frames
+import utils.optimization as Optimization
+from utils.network.client import Client
+from utils.network.enums import Callbacks as ClientCallbacks
 from predictor.predictor import PredictorService
+from simulation.objects.enums import Callbacks as SIM_Callbacks
+from simulation.objects.enums import OptimizationModes, SchedulingBehaviour
+from simulation.objects.enums import SimulationModes as SIM_Modes
+from simulation.objects.enums import TimestampModes
+from simulation.simulator import Simulator
+from utils.activityDuration import EventDurationsByMinPossibleTime
+import pickle
 
 G_KnownActivityDurations = {}
 scriptArgs = None
 simulator  = None
 predictor  = None
+predClient = None
+predClientLocks = {}
 
 def handler(signum, frame):
     global simulator
     global scriptArgs
     global predictor
+    global predClient
 
     if simulator is not None:
         simulator.HandleSimulationAbort()
@@ -34,6 +45,10 @@ def handler(signum, frame):
     
     if predictor is not None:
         predictor.StopService()
+
+    if predClient is not None:
+        predClient.Stop()
+
     exit(1)    
 signal.signal(signal.SIGINT, handler)
 
@@ -46,14 +61,15 @@ def argsParse(cmdParameterLine = None):
     parser.add_argument('-o', '--out', default='logs/simLog.xes', type=str, help="The path to which the simulated event-log will be exported")
 
     parser.add_argument('--actDurations', default=None, type=str, help="A dictionary of activities and their duration \'{\'A\': 1}\'")
-    #parser.add_argument('--precision', default=0.0, type=float)
-    
+    parser.add_argument('--SimMode', default='known_future',choices=['known_future','prediction'], type=str, help="")
+    parser.add_argument('--SchedulingBehaviour', default='clear',choices=['clear','keep'], type=str, help="Specify whether scheduling assignments that could not be carried out before the next scheduling callback should be kept or cleared")
+            
     # Fairness parameters
-    parser.add_argument('-F', '--Fair', default='W',choices=['W','T'], type=str, help="W: Amount of work / T: Time spent working")
+    parser.add_argument('-F', '--Fair', default=None, choices=['W','T'], type=str, help="W: Amount of work / T: Time spent working")
     parser.add_argument('--FairnessBacklogN', default=50, type=int, help="Number of passed windows to consider for fairness calculations")
     
     # Congestion parameters
-    parser.add_argument('-C', '--Congestion', default='N',choices=['N','T'], type=str, help="N: Number of cases in segment / T: Time spent in segment")
+    parser.add_argument('-C', '--Congestion', default=None, choices=['N','T'], type=str, help="N: Number of cases in segment / T: Time spent in segment")
     parser.add_argument('--CongestionBacklogN', default=50, type=int, help="Number of passed windows to consider for calculations")
     
     # Multi-Simulation mode
@@ -63,24 +79,66 @@ def argsParse(cmdParameterLine = None):
     # Predictor parameters
     parser.add_argument('--PredictorPort', default=5050, type=int, help="Port of the server handling predictions")
     parser.add_argument('--PredictorHost', default=None, type=str, help="IP address of the server host handling predictions")
-    parser.add_argument('--PredictorModelPath', default=None, type=str, help="Pretrained .h5 TF model used for predictions")
+    parser.add_argument('--PredictorModelNextAct', default=None, type=str, help="Pretrained .h5 TF model used for predictions or the model name if connecting to a remote predictor service")
+    parser.add_argument('--PredictorModelActDur', default=None, type=str, help="Pretrained .h5 TF model used for predictions or the model name if connecting to a remote predictor service")
+    parser.add_argument('--PredictorStandalone', default=False, action='store_true', help="Do not start the simulator but only thy predictor servcie as a standalone")
     
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Display additional runtime information")
     
     
+    # Get args either from CMD or from MultiSim.cfg string
     if cmdParameterLine is None:
         argData = parser.parse_args()
     else:
         argData = parser.parse_args(cmdParameterLine.split())
 
     
+    # Check for pre-defined activity durations
     if argData.actDurations is not None:
         print(argData.actDurations)
         global G_KnownActivityDurations
         G_KnownActivityDurations = json.loads(argData.actDurations)
     
+    # Ensure proper multiprocessing safety (Python seems to act odd on too many simultaneous processes)
+    if argData.MultiSimCores > int(multiprocessing.cpu_count() / 2):
+        descision = input('Using more than half of the virtual cores available might lead to instability due to the nature of python multiprocessing! Continue [y/n]?')
+        if descision not in ['y','Y','yes','Yes']:
+            exit(0)
+
+    # Check whether a model is specified if predictions are to be used
+    if (argData.PredictorModelNextAct is None or argData.PredictorModelActDur is None) and (argData.SimMode == 'prediction' or argData.PredictorStandalone):
+        print('NO MODEL SPECIFIED! - You specified to use prediction mode or want to start a standalone predictor, make sure to provide a prediction model via --PredictorModelNextAct and --PredictorModelActDur')
+        exit(0)
+            
     scriptArgs = argData
     return argData
+
+def ConvertArguments(args):
+    # Read the config to set up the simulator
+    if args.SimMode == 'known_future':
+        simMode = SIM_Modes.KNOWN_FUTURE
+    elif args.SimMode == 'prediction':
+        simMode = SIM_Modes.PREDICTED_FUTURE
+    else:
+        raise('No simulation mode specified!')
+    
+    if args.Fair is not None and args.Congestion is not None:
+        optMode = OptimizationModes.BOTH
+    elif args.Fair is not None:
+        optMode = OptimizationModes.FAIRNESS
+    elif args.Congestion is not None:
+        optMode = OptimizationModes.CONGESTION
+    else:
+        raise('No optimization mode specified!')
+      
+    if args.SchedulingBehaviour == 'clear':
+        schedBehaviour = SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW
+    elif args.SchedulingBehaviour == 'keep':
+        schedBehaviour = SchedulingBehaviour.KEEP_ASSIGNMENTS
+    else:
+        raise('No simulation mode specified!')
+    
+    return simMode, optMode, schedBehaviour
 
 
 
@@ -109,7 +167,57 @@ def SimulatorWindowStartScheduling_Callback(simulatorState, schedulingReadyResou
 
 
 
-def Run(args):
+
+
+########################################################
+#############                              #############
+##########      THREAD SENSITIVE METHODS      ##########
+#############                              #############
+########################################################
+def SimulatorPredictionNextAct_Callback(trace):
+    return SimulatorPredictionCommHandling('next_activity', trace)
+
+def SimulatorPredictionActDur_Callback(trace):
+    return SimulatorPredictionCommHandling('duration', trace)
+
+def SimulatorPredictionCommHandling(task, trace):
+    global scriptArgs
+    global predClient
+    global predClientLocks
+    
+    id   = uuid.uuid4()
+    lock = threading.Lock()
+    predClientLocks[id] = {'Lock': lock, 'Result': None}
+    
+    # Acquire the lock, such that it isn't available anymore
+    lock.acquire()
+
+    # Messages are sent async, further the predictor service does not need to process the requests in order
+    predClient.SendMessage(pickle.dumps({'Task': task, 'Trace': trace, 'ID': id}))
+
+    # Try to acquire again => Forces thread to wait until the lock is released in the 'PredictorAnswer_Callback' method
+    lock.acquire()
+    ret = predClientLocks[id]['Result']
+    del predClientLocks[id]
+    return ret
+
+def PredictorAnswer_Callback(msg):
+    """Once an answer from the prediction service is received, update the according waiting thread.
+    This method itself is called from the hanlder-thread of the predictor service, therfore a different thread than the simulation"""
+    global predClientLocks
+
+    data = pickle.loads(msg)
+    predClientLocks[data['ID']]['Result'] = data['Result']
+    predClientLocks[data['ID']]['Lock'].release()
+
+
+
+####################################
+#############          #############
+##########      MAIN      ##########
+#############          #############
+####################################
+def Run(args):    
     if type(args) == str:
         args = argsParse(args)
 
@@ -130,14 +238,17 @@ def Run(args):
     bucketId_borders_dict = frames.bucket_window_dict_by_width(event_dict, windowWidth)
     eventsPerWindowDict, id_frame_mapping = frames.bucket_id_list_dict_by_width(event_dict, windowWidth) # WindowID: [List of EventIDs] , EventID: WindowID
       
+    # Read the config to set up the simulator
+    simMode, optMode, schedBehaviour = ConvertArguments(args)
+
     # Simulation -> Callback at the beginning / end of each window
-    sim = Simulator(event_dict, eventsPerWindowDict, bucketId_borders_dict, 
-                    simulationMode      = SIM_Modes.KNOWN_FUTURE,
-                    #optimizationMode    = OptimizationModes.FAIRNESS, 
-                    optimizationMode    = OptimizationModes.CONGESTION, 
-                    schedulingBehaviour = SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW,
-                    #schedulingBehaviour = SchedulingBehaviour.KEEP_ASSIGNMENTS,
-                    endTimestampAttribute='ts', verbose=args.verbose)
+    sim = Simulator(log, eventsPerWindowDict, bucketId_borders_dict, 
+                    simulationMode      = simMode,
+                    optimizationMode    = optMode,
+                    schedulingBehaviour = schedBehaviour,
+                    timestampAttribute='ts',
+                    #lifecycleAttribute = 'lifecycle:transition',
+                    verbose=args.verbose)
     
     global simulator
     simulator = sim
@@ -145,10 +256,10 @@ def Run(args):
     sim.Register(SIM_Callbacks.WND_START_SCHEDULING, SimulatorWindowStartScheduling_Callback)
     sim.Register(SIM_Callbacks.CALC_Fairness, SimulatorFairness_Callback)
     sim.Register(SIM_Callbacks.CALC_Congestion, SimulatorCongestion_Callback)
-    sim.Register(SIM_Callbacks.CALC_EventDurations, lambda x,y: EventDurationsByMinPossibleTime(x,y))
+    sim.Register(SIM_Callbacks.CALC_EventDurations, lambda x,y: EventDurationsByMinPossibleTime(x,y)) # Something like EventDurationsByLifecycle?
 
-    sim.Register(SIM_Callbacks.PREDICT_NEXT_ACT, )
-    sim.Register(SIM_Callbacks.PREDICT_ACT_DUR, )
+    sim.Register(SIM_Callbacks.PREDICT_NEXT_ACT, SimulatorPredictionNextAct_Callback)
+    sim.Register(SIM_Callbacks.PREDICT_ACT_DUR,  SimulatorPredictionActDur_Callback)
 
     sim.Run()
     sim.ExportSimulationLog(args.out)
@@ -157,25 +268,36 @@ def Run(args):
 
 def main():
     global predictor
+    global predClient
+    
     args = argsParse()
 
     # Is there a remote prediction service? -> If not set up a local one
-    if args.PredictorHost is None and args.PredictorModelPath is not None:
-        predictor = PredictorService(None, args.PredictorPort, args.PredictorModelPath)
+    if args.PredictorHost is None and (args.PredictorModelNextAct is not None and args.PredictorModelActDur is not None) and (args.SimMode == 'prediction' or args.PredictorStandalone):
+        print('Starting predictor service')
+        predictor = PredictorService(None, args.PredictorPort, args.PredictorModelNextAct, args.PredictorModelActDur, verbose=args.verbose)
+        predictor.StartService(args.PredictorStandalone)
     
-    # Do we run a single simulation or multiple in parallel?
-    if args.MultiSimulation is None:
-        Run(args)
-    else:
-        argList = []
-        with open(args.MultiSimulation, "r") as f:
-            for x in f.readlines():
-                cmd = x.replace('\n','').strip()
-                if cmd != "":
-                    argList.append(cmd)
+    if not args.PredictorStandalone:
+        if args.SimMode == 'prediction':
+            # Connect to the predictor service
+            predClient = Client(verbose=args.verbose)
+            predClient.Register(ClientCallbacks.MESSAGE_RECEIVED, PredictorAnswer_Callback)
+            predClient.Connect(args.PredictorHost, args.PredictorPort, timeout=2)
+        
+        # Do we run a single simulation or multiple in parallel?
+        if args.MultiSimulation is None:
+            Run(args)
+        else:
+            argList = []
+            with open(args.MultiSimulation, "r") as f:
+                for x in f.readlines():
+                    cmd = x.replace('\n','').strip()
+                    if cmd != "":
+                        argList.append(cmd)
 
-        with Pool(max(1, args.MultiSimCores)) as p:
-            p.map(Run, argList)
+            with Pool(max(1, args.MultiSimCores)) as p:
+                p.map(Run, argList)
     
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@ import utils.extractor as extractor
 from simulation.objects.traceInstance import Trace
 from simulation.objects.enums import TimestampModes
 
-def ExtractTraces(log, timestampMode, timestampAttribute):
+def ExtractTraces(log, timestampAttribute, lifecycleAttribute, callback_PREDICT_NEXT_ACT, callback_PREDICT_ACT_DUR):
     if type(log) == str:
         log = pm4py.read_xes(log)
 
@@ -17,13 +17,18 @@ def ExtractTraces(log, timestampMode, timestampAttribute):
     
     # Sort events in traces by timestamp
     for cid in eventTraces.keys():
-        if timestampMode == TimestampModes.START or timestampMode == TimestampModes.END:
-            eventTraces[cid].sort(key=lambda e: e[timestampAttribute])
-            traces.append(Trace(str(cid), [(e['act'], e['res'], e[timestampAttribute]) for e in eventTraces[cid]]))
-        else:
-            eventTraces[cid].sort(key=lambda e: e[timestampAttribute[0]])
-            traces.append(Trace(str(cid), [(e['act'], e['res'], e[timestampAttribute[0]], e[timestampAttribute[1]]) for e in eventTraces[cid]]))
+        # Sort the events
+        eventTraces[cid].sort(key=lambda e: e[timestampAttribute])
+        
+        # Build the event trace
+        trace = Trace(str(cid), [(e['act'], e['res'], e[timestampAttribute]) for e in eventTraces[cid]], callback_PREDICT_NEXT_ACT, callback_PREDICT_ACT_DUR)
     
+        # If there are lifecylce information, save them for later 
+        if lifecycleAttribute is not None:
+            trace.lifecycle = [e[lifecycleAttribute] for e in eventTraces[cid]]
+            
+        # Done here
+        traces.append(trace)
     return traces
     
 def ExtractActivityResourceMapping(traces):

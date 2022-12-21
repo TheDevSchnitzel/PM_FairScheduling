@@ -9,13 +9,14 @@ import numpy as np
 import time
 import datetime
 from tensorflow.python.keras.saving import hdf5_format
+import json
 import h5py
 
 class PredictionModel:
-    def __init__(self, mapOH_A = {}, mapOH_R = {}):
+    def __init__(self, A = [], R = []):
         self.callbacks = []
-        self.MapOH_A = mapOH_A
-        self.MapOH_R = mapOH_R
+        self.MapOH_A = {}
+        self.MapOH_R = {}
         pass
 
     def __GetPerformerConfiguration1(self, inputs, outputSize):
@@ -37,12 +38,24 @@ class PredictionModel:
         
         return x
 
-        
+    def GenerateOneHotMappings(self, A, R):
+        oneHot_A = {a: list(np.zeros(len(A))) for a in A}
+        oneHot_R = {r: list(np.zeros(len(R))) for r in R}
 
+        A.sort()
+        R.sort()
+
+        for i in range(0, len(A)):
+            oneHot_A[A[i]][i] = 1
+
+        for i in range(0, len(R)):
+            oneHot_R[R[i]][i] = 1
+        
+        self.MapOH_A = oneHot_A
+        self.MapOH_R = oneHot_R
 
 
     def buildModel(self, regression, X_train_shape, y_train_shape, dropout, loss, context_shape):
-        print(X_train_shape)
         inputs = L.Input(shape=X_train_shape[1], name='Input')
         inter = L.Dropout(dropout)(inputs, training=True)
         
@@ -133,22 +146,32 @@ class PredictionModel:
 
     def Load(self, checkpoint_dir, name = None):
         if name is not None:
-            modelPath = f"{os.path.join(checkpoint_dir, name)}.h5"
+            modelPath = f"{os.path.join(checkpoint_dir, name)}"
         else:
             # A full path might have been provided
-            modelPath = M.load_model(checkpoint_dir)
+            modelPath = checkpoint_dir
             
-        with h5py.File(modelPath, mode='r') as f:
-            self.MapOH_A = f.attrs['MapOH_A']
-            self.MapOH_R = f.attrs['MapOH_R']
-            self.model = hdf5_format.load_model_from_hdf5(f)
+        self.model = tf.saved_model.load(modelPath)
+        with open(f'{modelPath}.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            self.MapOH_A = data['MapOH_A']
+            self.MapOH_R = data['MapOH_R']
+
+        #with h5py.File(modelPath, mode='r') as f:
+        #    self.MapOH_A, self.MapOH_R = self.__CreateOneHotEncoding(f.attrs['A'], f.attrs['R'])
+        #    self.model = hdf5_format.load_model_from_hdf5(f)
         
 
     def Save(self, checkpoint_dir, name):
-        with h5py.File(f"{os.path.join(checkpoint_dir, name)}.h5", mode='w') as f:
-            hdf5_format.save_model_to_hdf5(self.model, f)
-            f.attrs['MapOH_A'] = self.MapOH_A
-            f.attrs['MapOH_R'] = self.MapOH_R
+        path = f"{os.path.join(checkpoint_dir, name)}"
+        tf.saved_model.save(self.model, path)
+        
+        with open(f'{path}.json', 'w', encoding='utf-8') as f:
+            json.dump({'MapOH_A': self.MapOH_A, 'MapOH_R': self.MapOH_R}, f, ensure_ascii=False, indent=4)
+        #with h5py.File(f"{path}.h5", mode='w') as f:
+        #    hdf5_format.save_model_to_hdf5(self.model, f)
+        #    f.attrs['A'] = list(self.MapOH_A.keys())
+        #    f.attrs['R'] = list(self.MapOH_R.keys())
 
     def RegisterCallbackTF(self, cb):
         try:
@@ -159,7 +182,7 @@ class PredictionModel:
             for x in cb:    
                 self.callbacks.append(x)
 
-    def Predict(self, X_test, X_test_ctx=None, context=True):
+    def Predict(self, x, ctx=None, context=True):
         """
             Function for making predictions with the Bayesian neural network.
             @param X_test   The matrix of features for the test data
@@ -170,16 +193,28 @@ class PredictionModel:
                             variables.
             @return v_noise The estimated variance for the additive noise.
         """
-
-        X_test = np.array(X_test, ndmin = 3)
+        # Perform One-Hot vector mapping
+        (act, res) = x
+        X = self.MapOH_A[act] + self.MapOH_R[res]
+        
+        if ctx is not None:
+            c = [self.MapOH_A[act] + self.MapOH_R[res] for (act,res) in ctx]
+            X_ctx = []
+            for i in c:
+                X_ctx += i
+        
+        
+        
+        
+        X = np.array(X, ndmin = 3)
         model = self.model
         
         T = 10
         if context==True:
-            X_test_ctx = np.array(X_test_ctx, ndmin=2)
-            Yt_hat = np.array([model.predict([X_test, X_test_ctx], batch_size=1, verbose=0) for _ in range(T)])
+            X_ctx = np.array(X_ctx, ndmin=2)
+            Yt_hat = np.array([model.predict([X, X_ctx], batch_size=1, verbose=0) for _ in range(T)])
         else:
-            Yt_hat = np.array([model.predict(X_test, batch_size=1, verbose=0) for _ in range(T)])
+            Yt_hat = np.array([model.predict(X, batch_size=1, verbose=0) for _ in range(T)])
         
         #Yt_hat = Yt_hat * self.std_y_train + self.mean_y_train
         
@@ -194,6 +229,10 @@ class PredictionModel:
                 MC_uncertainty.append(np.std(Yt_hat[:,:,i].squeeze(),0))
         #rmse = np.mean((y_test.squeeze() - MC_pred.squeeze())**2.)**0.5
 
-        # We are done!
-        return MC_pred, MC_uncertainty
+        # Activity or duration?
+        if type(MC_pred) == float:
+            return MC_pred, MC_uncertainty
+        else:
+            mapping = {v: k for k,v in self.MapOH_A.items()}
+            return mapping[MC_pred], MC_uncertainty
         

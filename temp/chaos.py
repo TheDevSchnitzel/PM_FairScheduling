@@ -178,10 +178,14 @@ def CheckResourcesAlign(tracesA, tracesB):
     
 def main(a, b):
     logA = pm4py.read_xes(a)
-    logB = pm4py.read_xes(b)
+    
+    print(logA[0:5])
+    
+    exit(1)
+    #logB = pm4py.read_xes(b)
 
-    tracesA = GenerateTraces(logA)
-    tracesB = GenerateTraces(logB)
+    #tracesA = GenerateTraces(logA)
+    #tracesB = GenerateTraces(logB)
     
     #CheckResourcesAlign(tracesA, tracesB)
     for t in range(len(tracesA)):
@@ -194,5 +198,6 @@ def main(a, b):
     
     
 if __name__ == '__main__':
-    main('../logs/log_ResReduced.xes', '../XX_ScheduleTesting.xes')
+    #main('../logs/log_ResReduced.xes', '../XX_ScheduleTesting.xes')
+    main('C:/Users/Alexa/Downloads/BPI Challenge 2017.xes', '../XX_ScheduleTesting.xes')
   

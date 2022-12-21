@@ -1,8 +1,8 @@
 import socket
-from pythread import PyThread
+from .pythread import PyThread
 import signal
 import argparse
-from enums import Callbacks
+from .enums import Callbacks
 import time
     
 SERVER_OBJ = None
@@ -42,6 +42,9 @@ class Server:
         self.P_AllowOpenConnections = allowOpenConnections
         self.P_Verbose = verbose
         
+        if self.host is None:
+            self.host = socket.gethostname()
+
         self.callbacks = { x: None for x in Callbacks }
         
         # Store open connections by the client id given at connect

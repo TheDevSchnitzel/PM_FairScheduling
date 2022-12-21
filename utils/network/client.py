@@ -1,10 +1,11 @@
-import socket
-from pythread import PyThread
-import signal
 import argparse
-from enums import Callbacks
+import signal
+import socket
 import time
-    
+
+from .enums import Callbacks
+from .pythread import PyThread
+
 CLIENT_OBJ = None
 SCRIPT_ARGS = {}
    
@@ -157,6 +158,9 @@ class Client:
         self.port = port
         self.timeout = timeout
         
+        if self.host is None:
+            self.host = socket.gethostname()
+        
         # Create socket
         if udp:
             self.socket = socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
@@ -179,6 +183,7 @@ class Client:
         # Send data to the server
         t = PyThread(-1, self.__SendMessage, [msg], f"Sender thread")
         t.start()
+        
         
 
 def msgRecv(msg):

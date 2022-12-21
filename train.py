@@ -27,7 +27,7 @@ def argsParse():
     parser.add_argument('-l', '--log', default='../logs/log.xes', type=str, help="The path to the event-log to be loaded")
     parser.add_argument('-c', '--checkpointDir', default='predictor/checkpoints', type=str, help="The path to the folder storing the model checkpoints")
     parser.add_argument('-m', '--modelName', default=None, type=str, help="The name of the model")
-    parser.add_argument('-t','--task', default='next_activity', type=str, choices=['next_activity', 'next_timestamp'], help="Select what should be predicted: next activity or activity duration")
+    parser.add_argument('-t','--task', default='next_activity', type=str, choices=['next_activity', 'duration'], help="Select what should be predicted: next activity or activity duration")
     parser.add_argument('--CTX', default=False, action='store_true', help="Use context (all previous events of trace) for prediction")
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help="Display additional runtime information")
     scriptArgs = parser.parse_args()
@@ -50,9 +50,9 @@ def main():
 
 
 
-    logData, mapOH_A, mapOH_R = PrepareEventlogForActivityPrediction(args.log, TimestampModes.END, 'ts')
-    model = PredictionModel(mapOH_A, mapOH_R)
-
+    logData, A, R = PrepareEventlogForActivityPrediction(args.log, 'ts')
+    model = PredictionModel(A, R)
+    model.GenerateOneHotMappings(A, R)
     SetTrainingCallbacks(model, args)
     
     
@@ -71,7 +71,7 @@ def main():
     if args.task == 'next_activity':
         loss = 'categorical_crossentropy'
         regression = False
-    elif args.task == 'next_timestamp':
+    elif args.task == 'duration':
         loss = 'mae'
         regression = True
 

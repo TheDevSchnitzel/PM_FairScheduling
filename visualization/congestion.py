@@ -25,7 +25,7 @@ def GetWindowIndex(windows, time):
         else:
             break
     
-    # Find the matching window (the bin search isn't 100% accurate, eyeballed)
+    # Find the matching window (the bin search isn't 100% accurate, as windows might have different durations)
     idx = int((low - windows[0][0]) / wDur)
     for i in range(idx, len(windows.keys())):
         if windows[i][0] <= time <= windows[i][1]:
