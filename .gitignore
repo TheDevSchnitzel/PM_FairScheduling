@@ -4,6 +4,7 @@ logs/
 *.xes
 *.pdf
 *.h5
+predictor/checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
