@@ -140,10 +140,11 @@ def event_dic_with_resource(log):
         n = len(trace)
         for i in range(n):
             event = trace[i]
-            act = event['concept:name']
-            ts = ts_to_int(event['time:timestamp'])
-            res = event['org:resource']
-            event_dic[pos + i] = {'act': act, 'ts': ts, 'res': res, 'single': False, 'cid': traceNum}
+            act   = event['concept:name']
+            ts    = ts_to_int(event['time:timestamp'])
+            res   = event['org:resource']
+            lc    = event.get('lifecycle:transition')
+            event_dic[pos + i] = {'act': act, 'ts': ts, 'res': res, 'single': False, 'cid': traceNum, 'lc': lc}
         if n == 1:
             event_dic[pos]['single'] = True
         pos += n
@@ -161,9 +162,11 @@ def event_dic_wo_resource(log):
         n = len(trace)
         for i in range(n):
             event = trace[i]
-            act = event['concept:name']
-            ts = ts_to_int(event['time:timestamp'])
-            event_dic[pos + i] = {'act': act, 'ts': ts, 'single': False, 'cid': traceNum}
+            act   = event['concept:name']
+            ts    = ts_to_int(event['time:timestamp'])
+            lc    = event.get('lifecycle:transition')
+
+            event_dic[pos + i] = {'act': act, 'ts': ts, 'single': False, 'cid': traceNum, 'lc': lc}
         if n == 1:
             event_dic[pos]['single'] = True
         pos += n

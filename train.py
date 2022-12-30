@@ -78,7 +78,7 @@ def main():
 
     # Run the training
     model.Train(train_X, train_context_X, train_Y, regression, loss, batch_size=256, num_folds=10, context=(train_context_X is not None))
-    model.Save(args.checkpointDir, args.modelName)
+    model.Save(args.checkpointDir, f'{args.modelName}.h5')
 
 
 if __name__ == '__main__':

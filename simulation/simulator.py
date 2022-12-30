@@ -2,6 +2,7 @@ from distutils.log import error
 import time
 from .objects.traceInstance import Trace
 from .objects.enums import Callbacks, TimestampModes, SimulationModes, SchedulingBehaviour
+from .objects.enums import EventStreamUpdates as ESU
 from datetime import datetime, timezone
 from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 from pm4py.objects.conversion.log import converter as log_converter
@@ -11,7 +12,7 @@ from .objects.traceExtractor import ExtractTraces, ExtractActivityResourceMappin
 import pickle
 
 class Simulator:
-    def __init__(self, log, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, timestampMode = TimestampModes.END, timestampAttribute=None, lifecycleAttribute=None, verbose=False):
+    def __init__(self, log, eventsPerWindowDict, windows, simulationMode, optimizationMode, schedulingBehaviour, timestampMode = TimestampModes.END, timestampAttribute='ts', lifecycleAttribute='lc', verbose=False):
         self.P_EventsPerWindowDict = eventsPerWindowDict
         self.P_Windows = windows
         self.P_WindowCount = len(windows)
@@ -19,6 +20,7 @@ class Simulator:
         self.P_SimulationMode = simulationMode
         self.P_OptimizationMode = optimizationMode
         self.P_SchedulingBehaviour = schedulingBehaviour
+        self.P_Log = log
                 
         self.completedTraces = list()
         self.callbacks = { x: None for x in Callbacks }
@@ -36,23 +38,6 @@ class Simulator:
         if timestampAttribute is None:
             raise Exception("The parameter 'TimestampAttribute' needs to be set!")
         
-        # Build trace objects from the event data
-        self.traces = ExtractTraces(log, self.TimestampAttribute, self.LifecycleAttribute, self.callbacks.get(Callbacks.PREDICT_NEXT_ACT), self.callbacks.get(Callbacks.PREDICT_ACT_DUR))
-        self.traceCount = len(self.traces)
-        
-        # Extract information about activities and resources
-        self.P_AtoR, self.P_RtoA, self.A, self.R = ExtractActivityResourceMapping(self.traces)
-        
-        # Get resources that only perform activities that no other resource can perform
-        self.LonelyResources = self.__GetLonelyResources()
-        
-        # Startup-Information Display
-        self.__vPrint(f'### Simulator Data ###')
-        self.__vPrint(f'    -> TimestampMode: {str(self.TimestampMode)}')
-        self.__vPrint(f'    -> SimulationMode: {str(self.P_SimulationMode)}')
-        self.__vPrint(f'    -> SchedulingBehaviour: {str(self.P_SchedulingBehaviour)}')
-        self.__vPrint(f'    -> LonelyResources: {self.LonelyResources}')
-        self.__vPrint(f'    -> Activity-Resource Mappping: {self.P_AtoR}')
 
     ##############################################
     #############                    #############
@@ -121,6 +106,7 @@ class Simulator:
     
     def __RunScheduler(self, currentSchedule, currentWindow, currentWindowDuration):
         state = self.__GetSimulatorState(currentWindow)
+        resultSchedule = {}
         
         # Calculate fairness ratio
         fRatio = self.__Call(Callbacks.CALC_Fairness, [state])
@@ -149,15 +135,37 @@ class Simulator:
                 newSchedule = self.__Call(Callbacks.WND_START_SCHEDULING, (state, schedulingReadyResources, fRatio, cRatio))
                 
                 # Merge schedule dicts (Trace-ID is key, no duplicates ;) )
-                return {**currentSchedule, **newSchedule}
+                resultSchedule = {**currentSchedule, **newSchedule}
             else:
-                return currentSchedule                            
+                resultSchedule = currentSchedule                            
         elif self.P_SchedulingBehaviour == SchedulingBehaviour.CLEAR_ASSIGNMENTS_EACH_WINDOW:
-            return self.__Call(Callbacks.WND_START_SCHEDULING, (state, schedulingReadyResources, fRatio, cRatio))
-        else:
-            return {}
+            resultSchedule = self.__Call(Callbacks.WND_START_SCHEDULING, (state, schedulingReadyResources, fRatio, cRatio))
+        
+        # In case we use predictions, filter out the schedules made using wrongly predicted next activities
+        if self.P_SimulationMode == SimulationModes.PREDICTED_FUTURE:
+            cidList = list(resultSchedule.keys())
+
+            for trace in self.activeTraces:
+                if trace.case in cidList and trace.PRED_UpdateNextActivityIfWrong():
+                    del resultSchedule[trace.case]
+
+        return resultSchedule
     
-    
+    def __HandleEventStreamUpdate(type):
+        if type == ESU.CASE_NEW:
+            print('TODO: IMPLEMENT')
+        elif type == ESU.CASE_CLOSED:
+            print('TODO: IMPLEMENT')
+            #trace = find trace somehow
+            #self.activeTraces.remove(trace)
+            #self.completedTraces.append(trace)
+        elif type == ESU.CASE_REQUEST_ACTIVITY:
+            print('TODO: IMPLEMENT')
+        elif type == ESU.CASE_EVENT:
+            print('TODO: IMPLEMENT')
+        elif type == ESU.SCHEDULING_FORCE:
+            print('TODO: IMPLEMENT')
+            
                 
     
     ##############################################
@@ -165,14 +173,34 @@ class Simulator:
     ##########      PUBLIC METHODS      ##########
     #############                    #############
     ##############################################
-    def Register(self, callbackType, callback):
-        self.callbacks[callbackType] = callback
-         
-    def Run(self):
+    def Initialize(self):
+        # # Run checks
         # Check for correct specification of callbacks
         if self.P_SimulationMode == SimulationModes.PREDICTED_FUTURE and (self.callbacks.get(Callbacks.PREDICT_NEXT_ACT) is None or self.callbacks.get(Callbacks.PREDICT_ACT_DUR) is None):
             raise Exception("For simulation mode 'PREDICTED_FUTURE' the callbacks 'PREDICT_NEXT_ACT' and 'PREDICT_ACT_DUR' need to be specified!")
 
+        # Build trace objects from the event data
+        self.traces = ExtractTraces(self.P_Log, self.TimestampAttribute, self.LifecycleAttribute, self.callbacks.get(Callbacks.PREDICT_NEXT_ACT), self.callbacks.get(Callbacks.PREDICT_ACT_DUR))
+        self.traceCount = len(self.traces)
+        
+        # Extract information about activities and resources
+        self.P_AtoR, self.P_RtoA, self.A, self.R = ExtractActivityResourceMapping(self.traces)
+        
+        # Get resources that only perform activities that no other resource can perform
+        self.LonelyResources = self.__GetLonelyResources()
+        
+        # Startup-Information Display
+        self.__vPrint(f'### Simulator Data ###')
+        self.__vPrint(f'    -> TimestampMode: {str(self.TimestampMode)}')
+        self.__vPrint(f'    -> SimulationMode: {str(self.P_SimulationMode)}')
+        self.__vPrint(f'    -> SchedulingBehaviour: {str(self.P_SchedulingBehaviour)}')
+        self.__vPrint(f'    -> LonelyResources: {self.LonelyResources}')
+        self.__vPrint(f'    -> Activity-Resource Mappping: {self.P_AtoR}')
+
+    def Register(self, callbackType, callback):
+        self.callbacks[callbackType] = callback
+         
+    def Run(self):
         # In case a duration calculation for the activity duration is registered: Call it!
         self.__Call(Callbacks.CALC_EventDurations, (self.R, self.traces))
         
@@ -233,9 +261,9 @@ class Simulator:
             # First stop all activities ending in this timestep
             for trace in self.activeTraces:
                 if trace.HasRunningActivity():
-                    remainingTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep, self.P_SimulationMode)
+                    remainingTime = trace.GetRemainingActivityTime(self.TimestampMode, self.SimulatedTimestep, self.P_SimulationMode, real=True)
                     if remainingTime <= 0:
-                        trace.EndCurrentActivity(self.SimulatedTimestep)
+                        trace.EndCurrentActivity(self.SimulatedTimestep, self.P_SimulationMode)
                             
                         # Return the now free resource to the resource pool (Resource actually used by newest event in history of trace)
                         availableResources[trace.history[-1][2]] = currentWindowUpper - self.SimulatedTimestep
@@ -300,7 +328,7 @@ class Simulator:
             if trace.HasRunningActivity():
                 stats['RunningTraces'] += 1
                 trace.currentAct = (trace.currentAct[0],trace.currentAct[1],(trace.currentAct[2][0] + '_ABORTED', trace.currentAct[2][1],trace.currentAct[2][2]))
-                trace.EndCurrentActivity(self.SimulatedTimestep)
+                trace.EndCurrentActivity(self.SimulatedTimestep, self.P_SimulationMode)
             else:                
                 stats['WaitingTraces'] += 1
                 trace.history.append((self.SimulatedTimestep, self.SimulatedTimestep, 'SIMULATOR', ('ABORTED','SIMULATOR',self.SimulatedTimestep)))
@@ -324,9 +352,9 @@ class Simulator:
             ts = 0
             
         colCase = []
-        colAct = []
-        colRes = []
-        colTS = []
+        colAct  = []
+        colRes  = []
+        colTS   = []
         colTS_End = []
             
         for trace in self.completedTraces:

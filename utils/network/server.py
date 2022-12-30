@@ -159,7 +159,10 @@ class Server:
         
     def __SendMessage(self, clientNr, msg):
         if clientNr not in self.connections:
-            raise("No such connection registered!")
+            raise Exception("No such connection registered!")
+        
+        if self.P_Verbose:
+            print(f'Server sending msg to client {clientNr}!')
             
         # Send data to the client
         if type(msg) is bytes:
@@ -192,7 +195,7 @@ class Server:
     
     def SendMessage(self, clientNr, msg):
         if clientNr not in self.connections:
-            raise("No such connection registered!")
+            raise Exception("No such connection registered!")
             
         # Send data to the client
         t = PyThread(-1, self.__SendMessage, (clientNr, msg), f"Sender thread")

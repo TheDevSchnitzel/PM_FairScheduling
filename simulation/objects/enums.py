@@ -17,6 +17,7 @@ class TimestampModes(Enum):
 class SimulationModes(Enum):
     KNOWN_FUTURE     = 0
     PREDICTED_FUTURE = 1
+    EVENT_STREAM     = 2
     
 class OptimizationModes(Enum):
     FAIRNESS   = 0
@@ -26,4 +27,10 @@ class OptimizationModes(Enum):
 class SchedulingBehaviour(Enum):
     KEEP_ASSIGNMENTS              = 0
     CLEAR_ASSIGNMENTS_EACH_WINDOW = 1
-    
+
+class EventStreamUpdates(Enum):
+    CASE_NEW    = 0 # A new instance is created => Tell the simulator to track it
+    CASE_CLOSED = 1 # The instance is done => No more tracking
+    CASE_REQUEST_ACTIVITY = 2 # An instance wants to performs a certain activity => Does it align with the predicted one, also in the correct timewindow?
+    CASE_EVENT  = 4 # An event has actually taken place and needs to be recorded in the instance tracker
+    SCHEDULING_FORCE = 8 # Force the simulator to perform a scheduling and send the data immediately

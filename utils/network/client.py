@@ -98,7 +98,7 @@ class Client:
                     self.__vPrint(f"Connection termination requested by server...")
                     break
                 
-                self.__Call(Callbacks.MESSAGE_RECEIVED, bytestring)
+                self.__Call(Callbacks.MESSAGE_RECEIVED, [bytestring])
                 self.__vPrint(f"Server message received: {bytestring}")
                 msg = []
 

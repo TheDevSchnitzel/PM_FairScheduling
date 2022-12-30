@@ -25,6 +25,7 @@ from simulation.objects.enums import TimestampModes
 from simulation.simulator import Simulator
 from utils.activityDuration import EventDurationsByMinPossibleTime
 import pickle
+import traceback
 
 G_KnownActivityDurations = {}
 scriptArgs = None
@@ -33,7 +34,7 @@ predictor  = None
 predClient = None
 predClientLocks = {}
 
-def handler(signum, frame):
+def kernel_panic(signum, frame):
     global simulator
     global scriptArgs
     global predictor
@@ -50,7 +51,7 @@ def handler(signum, frame):
         predClient.Stop()
 
     exit(1)    
-signal.signal(signal.SIGINT, handler)
+signal.signal(signal.SIGINT, kernel_panic)
 
 
 def argsParse(cmdParameterLine = None): 
@@ -177,10 +178,10 @@ def SimulatorWindowStartScheduling_Callback(simulatorState, schedulingReadyResou
 def SimulatorPredictionNextAct_Callback(trace):
     return SimulatorPredictionCommHandling('next_activity', trace)
 
-def SimulatorPredictionActDur_Callback(trace):
-    return SimulatorPredictionCommHandling('duration', trace)
+def SimulatorPredictionActDur_Callback(trace, currentActivity=False):
+    return float(SimulatorPredictionCommHandling('duration', trace, currentActivity))
 
-def SimulatorPredictionCommHandling(task, trace):
+def SimulatorPredictionCommHandling(task, trace,currentActivity=False):
     global scriptArgs
     global predClient
     global predClientLocks
@@ -193,10 +194,13 @@ def SimulatorPredictionCommHandling(task, trace):
     lock.acquire()
 
     # Messages are sent async, further the predictor service does not need to process the requests in order
-    predClient.SendMessage(pickle.dumps({'Task': task, 'Trace': trace, 'ID': id}))
+    predClient.SendMessage(pickle.dumps({'Task': task, 'Trace': trace, 'ID': id, 'CurrentActivity': currentActivity}))
 
     # Try to acquire again => Forces thread to wait until the lock is released in the 'PredictorAnswer_Callback' method
-    lock.acquire()
+    
+    print(0)
+    lock.acquire()    
+    print(3)
     ret = predClientLocks[id]['Result']
     del predClientLocks[id]
     return ret
@@ -206,9 +210,11 @@ def PredictorAnswer_Callback(msg):
     This method itself is called from the hanlder-thread of the predictor service, therfore a different thread than the simulation"""
     global predClientLocks
 
+    print(1)
     data = pickle.loads(msg)
-    predClientLocks[data['ID']]['Result'] = data['Result']
+    predClientLocks[data['ID']]['Result'] = data['Result']    
     predClientLocks[data['ID']]['Lock'].release()
+    print(2)
 
 
 
@@ -227,7 +233,7 @@ def Run(args):
     windowNumber = 100 * math.ceil(math.sqrt(no_events))
     print(f"Number of windows: {windowNumber}")
     
-    # Convert XES-Events into dict {'act', 'ts', 'res', 'single', 'cid'}
+    # Convert XES-Events into dict {'act', 'ts', 'res', 'single', 'cid', 'lc'}
     event_dict = extractor.event_dict(log, res_info=True)
     
     # Pairs of events directly following each other, events triggering others (preceed them), events releasing others (follow them)
@@ -246,8 +252,6 @@ def Run(args):
                     simulationMode      = simMode,
                     optimizationMode    = optMode,
                     schedulingBehaviour = schedBehaviour,
-                    timestampAttribute='ts',
-                    #lifecycleAttribute = 'lifecycle:transition',
                     verbose=args.verbose)
     
     global simulator
@@ -261,6 +265,7 @@ def Run(args):
     sim.Register(SIM_Callbacks.PREDICT_NEXT_ACT, SimulatorPredictionNextAct_Callback)
     sim.Register(SIM_Callbacks.PREDICT_ACT_DUR,  SimulatorPredictionActDur_Callback)
 
+    sim.Initialize()
     sim.Run()
     sim.ExportSimulationLog(args.out)
     #sim.ExportSimulationLog('logs/simulated_congestion_log_WAITING_TRACE_COUNT.xes')
@@ -301,4 +306,8 @@ def main():
     
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except:
+        traceback.print_exc()
+        kernel_panic(None, None)

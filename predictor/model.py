@@ -17,6 +17,7 @@ class PredictionModel:
         self.callbacks = []
         self.MapOH_A = {}
         self.MapOH_R = {}
+        self.ctxShape = None
         pass
 
     def __GetPerformerConfiguration1(self, inputs, outputSize):
@@ -126,12 +127,11 @@ class PredictionModel:
                 y_train_normalized = y_train
 
         # Do we have a context vector?
-        ctxShape = None
         if context:
-            ctxShape = X_train_ctx.shape
+            self.ctxShape = X_train_ctx.shape
 
         # Construct the model
-        model = self.buildModel(regression=regression, X_train_shape=X_train.shape, y_train_shape=y_train_normalized.shape, dropout=dropout, loss=loss, context_shape=ctxShape)
+        model = self.buildModel(regression=regression, X_train_shape=X_train.shape, y_train_shape=y_train_normalized.shape, dropout=dropout, loss=loss, context_shape=self.ctxShape)
         
         # We iterate the learning process
         start_time = time.time()
@@ -151,27 +151,21 @@ class PredictionModel:
             # A full path might have been provided
             modelPath = checkpoint_dir
             
-        self.model = tf.saved_model.load(modelPath)
+        self.model = tf.keras.models.load_model(modelPath)
         with open(f'{modelPath}.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-            self.MapOH_A = data['MapOH_A']
-            self.MapOH_R = data['MapOH_R']
-
-        #with h5py.File(modelPath, mode='r') as f:
-        #    self.MapOH_A, self.MapOH_R = self.__CreateOneHotEncoding(f.attrs['A'], f.attrs['R'])
-        #    self.model = hdf5_format.load_model_from_hdf5(f)
-        
+            self.MapOH_A  = data['MapOH_A']
+            self.MapOH_R  = data['MapOH_R']
+            self.ctxShape = data['ctxShape']
+       
 
     def Save(self, checkpoint_dir, name):
         path = f"{os.path.join(checkpoint_dir, name)}"
-        tf.saved_model.save(self.model, path)
+        self.model.save(path)
         
         with open(f'{path}.json', 'w', encoding='utf-8') as f:
-            json.dump({'MapOH_A': self.MapOH_A, 'MapOH_R': self.MapOH_R}, f, ensure_ascii=False, indent=4)
-        #with h5py.File(f"{path}.h5", mode='w') as f:
-        #    hdf5_format.save_model_to_hdf5(self.model, f)
-        #    f.attrs['A'] = list(self.MapOH_A.keys())
-        #    f.attrs['R'] = list(self.MapOH_R.keys())
+            json.dump({'MapOH_A': self.MapOH_A, 'MapOH_R': self.MapOH_R, 'ctxShape' :self.ctxShape}, f, ensure_ascii=False, indent=4)
+
 
     def RegisterCallbackTF(self, cb):
         try:
@@ -203,15 +197,15 @@ class PredictionModel:
             for i in c:
                 X_ctx += i
         
-        
-        
-        
-        X = np.array(X, ndmin = 3)
+                
+        #X = np.array(X, ndmin = 3) # (None, 13) -> (1,1,13)
+        X     = np.array(X, ndmin = 2)
+        X_ctx = np.append(np.zeros(self.ctxShape[1] - len(X_ctx)), X_ctx) # padding
+        X_ctx = np.array(X_ctx, ndmin = 2)
         model = self.model
         
         T = 10
-        if context==True:
-            X_ctx = np.array(X_ctx, ndmin=2)
+        if context == True:
             Yt_hat = np.array([model.predict([X, X_ctx], batch_size=1, verbose=0) for _ in range(T)])
         else:
             Yt_hat = np.array([model.predict(X, batch_size=1, verbose=0) for _ in range(T)])
@@ -229,10 +223,18 @@ class PredictionModel:
                 MC_uncertainty.append(np.std(Yt_hat[:,:,i].squeeze(),0))
         #rmse = np.mean((y_test.squeeze() - MC_pred.squeeze())**2.)**0.5
 
+        MC_pred = MC_pred[0]
+
         # Activity or duration?
-        if type(MC_pred) == float:
+        if str(MC_pred.dtype) == 'float32' and len(MC_pred) == 1:
             return MC_pred, MC_uncertainty
         else:
-            mapping = {v: k for k,v in self.MapOH_A.items()}
-            return mapping[MC_pred], MC_uncertainty
+
+            # Map the propability vector back to a one-hot and then to the actual activity
+            key = np.cumsum(np.ones(len(MC_pred)))
+            y = np.zeros_like(MC_pred)
+            y[MC_pred.argmax()] = 1
+            mapping = {(np.array(v) * key).max(): k for k,v in self.MapOH_A.items()}
+
+            return mapping[(y * key).max()], MC_uncertainty
         
