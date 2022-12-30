@@ -51,7 +51,7 @@ class PredictorService:
                 (act,res), ctx, id, clientNr, task = self.Queue.get(timeout=5)
                 
                 if self.Verbose:                    
-                    print(f'Predictor service working on {task} for {id}...', sep='')
+                    print(f'Predictor service working on {task} for {id}...')
                 
                 try:
                     if task == 'next_activity':
@@ -61,8 +61,9 @@ class PredictorService:
                 except:
                     traceback.print_exc()
 
-                if self.Verbose:                    
-                    print(f"...done: '{result}' - Sending result...", sep='')
+                if self.Verbose:
+                    print(f'    -> ({act},{res}) with ({ctx}) TO {result}')
+                    print(f"    ...done: '{result}' - Sending result...", sep='')
 
                 self.Server.SendMessage(clientNr, pickle.dumps({'ID':id, 'Result': result}))
                 

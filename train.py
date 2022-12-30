@@ -58,6 +58,7 @@ def main():
     
     # Split the data into predictors, targets and context
     train_X = np.array([np.append(d.CurrentActivity, d.CurrentResource) for d in logData])
+    #train_X = np.array([d.CurrentActivity for d in logData])
     if args.CTX:
         train_context_X = [d.HistoricActResTuples for d in logData]
         maxLen = max([len(x) for x in train_context_X])
@@ -66,6 +67,16 @@ def main():
         train_context_X = None
     train_Y = np.array([d.NextActivity if args.task == 'next_activity' else d.CurrentActivityDuration for d in logData])
 
+
+
+    # print(train_X[0:3])
+    # print(train_context_X[0:3])
+    # print(train_Y[0:3])
+
+    # print(len(logData))
+    # print(len([x for x in logData if np.array_equal(x.NextActivity, x.CurrentActivity)]))
+    # print(len(logData) - len([x for x in logData if np.array_equal(x.NextActivity, x.CurrentActivity)]))
+    # exit(1)
 
     # Set loss function for each task
     if args.task == 'next_activity':

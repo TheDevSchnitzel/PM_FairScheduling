@@ -8,7 +8,7 @@ from simulation.objects.traceExtractor import ExtractTraces, ExtractActivityReso
 from utils.activityDuration import EventDurationsByMinPossibleTime
 
 class TracePredictionData:
-    def __init__(self, currentActivity, currentResource, historicActResTuples , nextActivity , currentActivityDuration):
+    def __init__(self, currentActivity, currentResource, historicActResTuples, nextActivity, currentActivityDuration):
         self.CurrentActivity = currentActivity
         self.CurrentResource = currentResource
         self.HistoricActResTuples = historicActResTuples
@@ -56,8 +56,8 @@ def PrepareTraceForActivityPrediction(trace, oneHotMap_A, oneHotMap_R):
             # Extend the known data with the one now known from previous event
             newHistory = np.append(data[-1][0], data[-1][1])
             newHistory = np.append(newHistory , data[-1][2])
-            data.append((newHistory, oneHotMap_A[act], oneHotMap_R[res]))
             tracePredData.append(TracePredictionData(data[-1][1], data[-1][2], newHistory, oneHotMap_A[act], trace.durations[i]))
+            data.append((newHistory, oneHotMap_A[act], oneHotMap_R[res]))
     
     return tracePredData
 

@@ -197,10 +197,8 @@ def SimulatorPredictionCommHandling(task, trace,currentActivity=False):
     predClient.SendMessage(pickle.dumps({'Task': task, 'Trace': trace, 'ID': id, 'CurrentActivity': currentActivity}))
 
     # Try to acquire again => Forces thread to wait until the lock is released in the 'PredictorAnswer_Callback' method
-    
-    print(0)
     lock.acquire()    
-    print(3)
+    
     ret = predClientLocks[id]['Result']
     del predClientLocks[id]
     return ret
@@ -210,11 +208,9 @@ def PredictorAnswer_Callback(msg):
     This method itself is called from the hanlder-thread of the predictor service, therfore a different thread than the simulation"""
     global predClientLocks
 
-    print(1)
     data = pickle.loads(msg)
     predClientLocks[data['ID']]['Result'] = data['Result']    
     predClientLocks[data['ID']]['Lock'].release()
-    print(2)
 
 
 

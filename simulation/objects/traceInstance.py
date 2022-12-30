@@ -26,15 +26,6 @@ class Trace:
         self.PRED_NextActivityDuration    = 1
         self.PRED_CurrentActivityDuration = None
     
-    def __CHECK(self, act):
-        if act != self.future[0][0]:
-            print(f'Wrong prediction {act} instead of {self.future[0][0]}!')
-            print(f'    -> {self.history} - {self.currentAct} - {self.future}')
-        else:
-            print('Correct!')
-        return act
-
-
     def PRED_UpdateNextActivityIfWrong(self):
         """Returns false if the next activity was correctly predicted, True otherwise"""
         act = self.GetNextActivity(SimulationModes.PREDICTED_FUTURE)
@@ -64,7 +55,6 @@ class Trace:
             # Request the next_activity prediction, if future has a value this has already been done, do not do it again
             if self.PRED_NextActivity is None:
                 self.PRED_NextActivity = self.PREDICT_NEXT_ACT(self)
-                self.__CHECK(self.PRED_NextActivity)
                 
             return self.PRED_NextActivity
         else:
@@ -76,7 +66,6 @@ class Trace:
         elif simMode == SimulationModes.PREDICTED_FUTURE:
             if self.PRED_NextActivity is None:
                 self.PRED_NextActivity = self.PREDICT_NEXT_ACT(self)
-                self.__CHECK(self.PRED_NextActivity)
             return (self.PRED_NextActivity, None, None) # (a,r,ts)
             
         else:
